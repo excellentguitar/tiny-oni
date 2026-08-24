@@ -1,0 +1,14 @@
+build/
+*.user
+*.suo
+.vs/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.log
+build_errors.txt

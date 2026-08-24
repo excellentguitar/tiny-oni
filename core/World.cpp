@@ -1,0 +1,1849 @@
+#include "World.h"
+#include "Types.h"
+#include "Materials.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+World::World()
+    : cells(
+        static_cast<size_t>(WORLD_W) *
+        static_cast<size_t>(WORLD_H)
+      ),
+      surface(WORLD_W, 40)
+{
+}
+
+Tile& World::at(int x, int y)
+{
+    return cells[
+        static_cast<size_t>(y) *
+        static_cast<size_t>(WORLD_W) +
+        static_cast<size_t>(x)
+    ];
+}
+
+const Tile& World::at(int x, int y) const
+{
+    return cells[
+        static_cast<size_t>(y) *
+        static_cast<size_t>(WORLD_W) +
+        static_cast<size_t>(x)
+    ];
+}
+
+bool World::inside(int x, int y) const
+{
+    return
+        x >= 0 &&
+        x < WORLD_W &&
+        y >= 0 &&
+        y < WORLD_H;
+}
+
+bool World::solidType(Type type) const
+{
+    switch (type)
+    {
+        case Type::Grass:
+        case Type::Dirt:
+        case Type::Clay:
+        case Type::Claystone:
+        case Type::Sand:
+        case Type::Sandstone:
+        case Type::Chalk:
+        case Type::Limestone:
+        case Type::Granite:
+        case Type::Basalt:
+        case Type::Gravel:
+        case Type::Copper:
+        case Type::Iron:
+        case Type::Coal:
+        case Type::Wood:
+        case Type::Leaves:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool World::solid(int x, int y) const
+{
+    if (!inside(x, y))
+        return true;
+
+    return solidType(at(x, y).type);
+}
+
+bool World::open(int x, int y) const
+{
+    if (!inside(x, y))
+        return false;
+
+    switch (at(x, y).type)
+    {
+        case Type::Empty:
+        case Type::Oxygen:
+        case Type::Water:
+        case Type::Gas:
+        case Type::Magma:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+float World::noise1D(float x, float scale) const
+{
+    return
+        std::sin(x * 0.043f * scale) * 0.55f +
+        std::sin(x * 0.091f * scale + 2.1f) * 0.30f +
+        std::sin(x * 0.173f * scale + 5.7f) * 0.15f;
+}
+
+float World::noise2D(
+    int x,
+    int y,
+    float scale
+) const
+{
+    float a =
+        std::sin(
+            x * 0.071f * scale +
+            y * 0.037f * scale
+        );
+
+    float b =
+        std::sin(
+            x * 0.131f * scale -
+            y * 0.083f * scale +
+            2.7f
+        );
+
+    float c =
+        std::sin(
+            x * 0.023f * scale +
+            y * 0.157f * scale +
+            4.1f
+        );
+
+    return
+        a * 0.50f +
+        b * 0.30f +
+        c * 0.20f;
+}
+
+void World::generate()
+{
+    std::fill(
+        cells.begin(),
+        cells.end(),
+        Tile{}
+    );
+
+    for (int x = 0; x < WORLD_W; ++x)
+    {
+        float n =
+            noise1D(
+                static_cast<float>(x),
+                1.0f
+            );
+
+        int height =
+            38 +
+            static_cast<int>(n * 12.0f);
+
+        height +=
+            static_cast<int>(
+                std::sin(x * 0.018f) * 8.0f
+            );
+
+        surface[x] =
+            std::clamp(
+                height,
+                25,
+                60
+            );
+    }
+
+    for (int x = 1; x < WORLD_W - 1; ++x)
+    {
+        int s = surface[x];
+
+        for (int y = s; y < WORLD_H - 1; ++y)
+        {
+            int depth = y - s;
+
+            Type type = Type::Dirt;
+
+            if (depth == 0)
+            {
+                type = Type::Grass;
+            }
+            else if (depth <= 3)
+            {
+                type =
+                    noise2D(x, y, 1.0f) > 0.35f
+                    ? Type::Clay
+                    : Type::Dirt;
+            }
+            else if (depth <= 7)
+            {
+                type =
+                    noise2D(x, y, 1.2f) > 0.25f
+                    ? Type::Sand
+                    : Type::Dirt;
+            }
+            else if (depth <= 15)
+            {
+                float n =
+                    noise2D(x, y, 0.9f);
+
+                if (n > 0.55f)
+                    type = Type::Sandstone;
+                else if (n < -0.55f)
+                    type = Type::Claystone;
+                else
+                    type = Type::Dirt;
+            }
+            else if (depth <= 25)
+            {
+                float n =
+                    noise2D(x, y, 0.75f);
+
+                if (n > 0.55f)
+                    type = Type::Sandstone;
+                else if (n < -0.35f)
+                    type = Type::Chalk;
+                else
+                    type = Type::Limestone;
+            }
+            else if (depth <= 42)
+            {
+                float n =
+                    noise2D(x, y, 0.55f);
+
+                if (n > 0.65f)
+                    type = Type::Sandstone;
+                else if (n < -0.45f)
+                    type = Type::Chalk;
+                else
+                    type = Type::Limestone;
+            }
+            else
+            {
+                type = Type::Granite;
+            }
+
+            at(x, y).type = type;
+            at(x, y).amount = 1.0f;
+        }
+    }
+
+    for (int i = 0; i < 22; ++i)
+    {
+        int x =
+            20 + rand() % (WORLD_W - 40);
+
+        int y =
+            surface[x] +
+            18 +
+            rand() % 55;
+
+        int rx =
+            8 + rand() % 25;
+
+        int ry =
+            8 + rand() % 22;
+
+        Type rock =
+            rand() % 3 == 0
+            ? Type::Basalt
+            : Type::Granite;
+
+        addRockMass(
+            x,
+            y,
+            rx,
+            ry,
+            rock
+        );
+    }
+
+    for (int x = 2; x < WORLD_W - 2; ++x)
+    {
+        int s = surface[x];
+
+        for (
+            int y = s + 1;
+            y < std::min(s + 9, WORLD_H - 1);
+            ++y
+        )
+        {
+            if (
+                noise2D(
+                    x * 2,
+                    y * 3,
+                    1.5f
+                ) > 0.78f
+            )
+            {
+                at(x, y).type =
+                    Type::Gravel;
+            }
+        }
+    }
+
+    generateCaves();
+
+    for (int i = 0; i < 34; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int remaining =
+            WORLD_H -
+            surface[x] -
+            20;
+
+        if (remaining <= 1)
+            continue;
+
+        int y =
+            surface[x] +
+            15 +
+            rand() % remaining;
+
+        addCopperVein(
+            x,
+            y,
+            7 + rand() % 18
+        );
+    }
+
+    for (int i = 0; i < 18; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int remaining =
+            WORLD_H -
+            surface[x] -
+            25;
+
+        if (remaining <= 1)
+            continue;
+
+        int y =
+            surface[x] +
+            20 +
+            rand() % remaining;
+
+        addOreCluster(
+            Type::Iron,
+            x,
+            y,
+            8 + rand() % 15
+        );
+    }
+
+    for (int i = 0; i < 14; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int remaining =
+            WORLD_H -
+            surface[x] -
+            15;
+
+        if (remaining <= 1)
+            continue;
+
+        int y =
+            surface[x] +
+            10 +
+            rand() % remaining;
+
+        addCoalSeam(x, y);
+    }
+
+    for (int i = 0; i < 12; ++i)
+    {
+        int cx =
+            20 + rand() % (WORLD_W - 40);
+
+        int cy =
+            surface[cx] +
+            15 +
+            rand() % 30;
+
+        int rx =
+            4 + rand() % 10;
+
+        int ry =
+            2 + rand() % 5;
+
+        for (
+            int y = cy - ry;
+            y <= cy + ry;
+            ++y
+        )
+        {
+            for (
+                int x = cx - rx;
+                x <= cx + rx;
+                ++x
+            )
+            {
+                if (!inside(x, y))
+                    continue;
+
+                float dx =
+                    (x - cx) /
+                    static_cast<float>(rx);
+
+                float dy =
+                    (y - cy) /
+                    static_cast<float>(ry);
+
+                if (
+                    dx * dx +
+                    dy * dy < 1.0f &&
+                    !solid(x, y)
+                )
+                {
+                    at(x, y).type =
+                        Type::Water;
+
+                    at(x, y).amount =
+                        1.0f;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < 7; ++i)
+    {
+        int cx =
+            20 + rand() % (WORLD_W - 40);
+
+        int cy =
+            surface[cx] +
+            20 +
+            rand() % 35;
+
+        int rx =
+            5 + rand() % 12;
+
+        int ry =
+            3 + rand() % 7;
+
+        for (
+            int y = cy - ry;
+            y <= cy + ry;
+            ++y
+        )
+        {
+            for (
+                int x = cx - rx;
+                x <= cx + rx;
+                ++x
+            )
+            {
+                if (!inside(x, y))
+                    continue;
+
+                float dx =
+                    (x - cx) /
+                    static_cast<float>(rx);
+
+                float dy =
+                    (y - cy) /
+                    static_cast<float>(ry);
+
+                if (
+                    dx * dx +
+                    dy * dy < 1.0f &&
+                    !solid(x, y)
+                )
+                {
+                    at(x, y).type =
+                        Type::Gas;
+
+                    at(x, y).amount =
+                        1.0f;
+                }
+            }
+        }
+    }
+
+    generateMagma();
+
+    fillSurfaceOxygen();
+
+    generateTrees();
+}
+
+void World::addRockMass(
+    int cx,
+    int cy,
+    int rx,
+    int ry,
+    Type rock
+)
+{
+    for (
+        int y = cy - ry;
+        y <= cy + ry;
+        ++y
+    )
+    {
+        for (
+            int x = cx - rx;
+            x <= cx + rx;
+            ++x
+        )
+        {
+            if (!inside(x, y))
+                continue;
+
+            float dx =
+                (x - cx) /
+                static_cast<float>(rx);
+
+            float dy =
+                (y - cy) /
+                static_cast<float>(ry);
+
+            float n =
+                noise2D(
+                    x,
+                    y,
+                    0.45f
+                ) * 0.30f;
+
+            if (
+                dx * dx +
+                dy * dy <
+                1.0f + n
+            )
+            {
+                if (y > surface[x] + 7)
+                    at(x, y).type = rock;
+            }
+        }
+    }
+}
+
+void World::addCopperVein(
+    int cx,
+    int cy,
+    int length
+)
+{
+    for (int i = 0; i < length; ++i)
+    {
+        int x =
+            cx +
+            rand() % 7 -
+            3;
+
+        int y =
+            cy +
+            rand() % 5 -
+            2;
+
+        if (!inside(x, y))
+            continue;
+
+        if (solid(x, y))
+        {
+            at(x, y).type =
+                Type::Copper;
+
+            at(x, y).amount =
+                1.0f;
+        }
+
+        if (rand() % 4 == 0)
+        {
+            int bx =
+                x +
+                rand() % 5 -
+                2;
+
+            int by =
+                y +
+                rand() % 5 -
+                2;
+
+            if (
+                inside(bx, by) &&
+                solid(bx, by)
+            )
+            {
+                at(bx, by).type =
+                    Type::Copper;
+
+                at(bx, by).amount =
+                    1.0f;
+            }
+        }
+    }
+}
+
+void World::addOreCluster(
+    Type ore,
+    int cx,
+    int cy,
+    int size
+)
+{
+    for (int i = 0; i < size; ++i)
+    {
+        int x =
+            cx +
+            rand() % 9 -
+            4;
+
+        int y =
+            cy +
+            rand() % 9 -
+            4;
+
+        if (!inside(x, y))
+            continue;
+
+        if (solid(x, y))
+        {
+            at(x, y).type = ore;
+            at(x, y).amount = 1.0f;
+        }
+    }
+}
+
+void World::addCoalSeam(
+    int cx,
+    int cy
+)
+{
+    int length =
+        8 + rand() % 16;
+
+    for (int i = 0; i < length; ++i)
+    {
+        int x = cx + i;
+
+        int y =
+            cy +
+            static_cast<int>(
+                std::sin(i * 0.55f) * 2.0f
+            ) +
+            rand() % 3 -
+            1;
+
+        if (!inside(x, y))
+            continue;
+
+        if (solid(x, y))
+        {
+            at(x, y).type =
+                Type::Coal;
+
+            at(x, y).amount =
+                1.0f;
+        }
+    }
+}
+
+void World::generateCaves()
+{
+    for (
+        int y = 48;
+        y < WORLD_H - 15;
+        ++y
+    )
+    {
+        for (
+            int x = 2;
+            x < WORLD_W - 2;
+            ++x
+        )
+        {
+            if (y <= surface[x] + 9)
+                continue;
+
+            float n =
+                noise2D(
+                    x,
+                    y,
+                    0.85f
+                );
+
+            float n2 =
+                noise2D(
+                    x * 2,
+                    y * 2,
+                    0.45f
+                );
+
+            bool cave =
+                n > 0.67f &&
+                n2 > -0.15f;
+
+            bool tunnel =
+                std::abs(
+                    std::sin(
+                        x * 0.031f +
+                        y * 0.082f
+                    )
+                ) > 0.985f &&
+                n > 0.05f;
+
+            if (
+                (cave || tunnel) &&
+                y < WORLD_H - 8
+            )
+            {
+                at(x, y) = Tile{};
+            }
+        }
+    }
+
+    for (int i = 0; i < 18; ++i)
+    {
+        int cx =
+            15 + rand() % (WORLD_W - 30);
+
+        int cy =
+            surface[cx] +
+            20 +
+            rand() % 45;
+
+        int rx =
+            5 + rand() % 15;
+
+        int ry =
+            3 + rand() % 9;
+
+        for (
+            int y = cy - ry;
+            y <= cy + ry;
+            ++y
+        )
+        {
+            for (
+                int x = cx - rx;
+                x <= cx + rx;
+                ++x
+            )
+            {
+                if (!inside(x, y))
+                    continue;
+
+                if (y <= surface[x] + 10)
+                    continue;
+
+                float dx =
+                    (x - cx) /
+                    static_cast<float>(rx);
+
+                float dy =
+                    (y - cy) /
+                    static_cast<float>(ry);
+
+                float distortion =
+                    noise2D(
+                        x,
+                        y,
+                        0.7f
+                    ) * 0.25f;
+
+                if (
+                    dx * dx +
+                    dy * dy <
+                    1.0f + distortion
+                )
+                {
+                    at(x, y) = Tile{};
+                }
+            }
+        }
+    }
+}
+
+void World::generateMagma()
+{
+    int magmaBase =
+        WORLD_H - 18;
+
+    for (
+        int x = 1;
+        x < WORLD_W - 1;
+        ++x
+    )
+    {
+        float n =
+            noise1D(
+                x * 1.7f,
+                0.7f
+            );
+
+        int top =
+            magmaBase +
+            static_cast<int>(n * 8.0f);
+
+        top =
+            std::clamp(
+                top,
+                WORLD_H - 25,
+                WORLD_H - 7
+            );
+
+        for (
+            int y = top;
+            y < WORLD_H - 1;
+            ++y
+        )
+        {
+            float variation =
+                noise2D(
+                    x,
+                    y,
+                    0.35f
+                );
+
+            if (variation > -0.35f)
+            {
+                at(x, y).type =
+                    Type::Magma;
+
+                at(x, y).amount =
+                    1.0f;
+
+                at(x, y).temperature =
+                    1100.0f;
+            }
+        }
+    }
+
+    for (int i = 0; i < 12; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int width =
+            2 + rand() % 5;
+
+        int height =
+            8 + rand() % 22;
+
+        for (
+            int y = WORLD_H - 18;
+            y > WORLD_H - 18 - height;
+            --y
+        )
+        {
+            for (
+                int dx = -width;
+                dx <= width;
+                ++dx
+            )
+            {
+                int xx = x + dx;
+
+                if (!inside(xx, y))
+                    continue;
+
+                float edge =
+                    std::abs(dx) /
+                    static_cast<float>(width + 1);
+
+                if (
+                    edge <
+                    0.65f +
+                    noise2D(
+                        xx,
+                        y,
+                        0.8f
+                    ) * 0.2f
+                )
+                {
+                    at(xx, y).type =
+                        Type::Magma;
+
+                    at(xx, y).temperature =
+                        1100.0f;
+                }
+            }
+        }
+    }
+}
+
+void World::fillSurfaceOxygen()
+{
+    for (int x = 0; x < WORLD_W; ++x)
+    {
+        int s = surface[x];
+
+        for (int y = 0; y < s; ++y)
+        {
+            if (at(x, y).type == Type::Empty)
+            {
+                at(x, y).type =
+                    Type::Oxygen;
+
+                at(x, y).amount =
+                    1.0f;
+
+                at(x, y).pressure =
+                    1.0f;
+
+                at(x, y).temperature =
+                    20.0f;
+            }
+        }
+    }
+}
+
+
+// ============================================================
+// TREES
+// ============================================================
+
+World::TreeKind World::randomTree()
+{
+    int r = rand() % 100;
+
+    if (r < 28)
+        return TreeKind::Oak;
+
+    if (r < 43)
+        return TreeKind::Pine;
+
+    if (r < 58)
+        return TreeKind::Birch;
+
+    if (r < 66)
+        return TreeKind::Redwood;
+
+    if (r < 80)
+        return TreeKind::Acacia;
+
+    if (r < 91)
+        return TreeKind::Purpleheart;
+
+    return TreeKind::Ebony;
+}
+
+void World::generateTrees()
+{
+    for (
+        int x = 6;
+        x < WORLD_W - 6;
+        ++x
+    )
+    {
+        int s = surface[x];
+
+        if (
+            !inside(x, s) ||
+            at(x, s).type != Type::Grass
+        )
+            continue;
+
+        if (rand() % 100 > 13)
+            continue;
+
+        TreeKind kind =
+            randomTree();
+
+        int height = 0;
+
+        switch (kind)
+        {
+            case TreeKind::Oak:
+                height = 7 + rand() % 7;
+                break;
+
+            case TreeKind::Pine:
+                height = 9 + rand() % 10;
+                break;
+
+            case TreeKind::Birch:
+                height = 8 + rand() % 8;
+                break;
+
+            case TreeKind::Redwood:
+                height = 18 + rand() % 18;
+                break;
+
+            case TreeKind::Acacia:
+                height = 8 + rand() % 8;
+                break;
+
+            case TreeKind::Purpleheart:
+                height = 9 + rand() % 8;
+                break;
+
+            case TreeKind::Ebony:
+                height = 7 + rand() % 9;
+                break;
+        }
+
+        makeTree(
+            x,
+            s - 1,
+            height,
+            kind
+        );
+
+        x +=
+            3 +
+            rand() % 8;
+    }
+}
+
+void World::makeTree(
+    int baseX,
+    int baseY,
+    int height,
+    TreeKind kind
+)
+{
+    int trunkWidth =
+        kind == TreeKind::Redwood
+        ? 3
+        : (
+            kind == TreeKind::Oak
+            ? 2
+            : 1
+        );
+
+    for (int y = 0; y < height; ++y)
+    {
+        int yy =
+            baseY - y;
+
+        if (!inside(baseX, yy))
+            continue;
+
+        int offset = 0;
+
+        if (kind == TreeKind::Acacia)
+        {
+            offset =
+                static_cast<int>(
+                    std::sin(y * 0.45f) * 1.5f
+                );
+        }
+
+        for (
+            int dx = 0;
+            dx < trunkWidth;
+            ++dx
+        )
+        {
+            int xx =
+                baseX +
+                dx -
+                trunkWidth / 2 +
+                offset;
+
+            if (!inside(xx, yy))
+                continue;
+
+            if (
+                at(xx, yy).type == Type::Oxygen ||
+                at(xx, yy).type == Type::Empty
+            )
+            {
+                at(xx, yy).type =
+                    Type::Wood;
+
+                at(xx, yy).temperature =
+                    20.0f +
+                    static_cast<float>(
+                        static_cast<int>(kind)
+                    );
+            }
+        }
+    }
+
+    switch (kind)
+    {
+        case TreeKind::Oak:
+            makeOakCrown(
+                baseX,
+                baseY - height + 2,
+                5
+            );
+            break;
+
+        case TreeKind::Pine:
+            makePineCrown(
+                baseX,
+                baseY - height + 1,
+                height
+            );
+            break;
+
+        case TreeKind::Birch:
+            makeBirchCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Redwood:
+            makeRedwoodCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Acacia:
+            makeAcaciaCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Purpleheart:
+            makePurpleheartCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Ebony:
+            makeEbonyCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+    }
+}
+
+void World::leaf(
+    int x,
+    int y,
+    TreeKind kind
+)
+{
+    if (!inside(x, y))
+        return;
+
+    if (
+        at(x, y).type == Type::Oxygen ||
+        at(x, y).type == Type::Empty
+    )
+    {
+        at(x, y).type =
+            Type::Leaves;
+
+        at(x, y).temperature =
+            100.0f +
+            static_cast<float>(
+                static_cast<int>(kind)
+            );
+    }
+}
+
+void World::makeOakCrown(
+    int cx,
+    int cy,
+    int r
+)
+{
+    for (
+        int y = cy - r;
+        y <= cy + r;
+        ++y
+    )
+    {
+        for (
+            int x = cx - r - 2;
+            x <= cx + r + 2;
+            ++x
+        )
+        {
+            float dx =
+                (x - cx) /
+                static_cast<float>(r + 2);
+
+            float dy =
+                (y - cy) /
+                static_cast<float>(r);
+
+            float n =
+                noise2D(
+                    x,
+                    y,
+                    1.5f
+                );
+
+            if (
+                dx * dx +
+                dy * dy <
+                1.0f +
+                n * 0.25f
+            )
+            {
+                leaf(
+                    x,
+                    y,
+                    TreeKind::Oak
+                );
+            }
+        }
+    }
+}
+
+void World::makePineCrown(
+    int cx,
+    int cy,
+    int height
+)
+{
+    for (
+        int y = cy;
+        y < cy + height / 2 + 5;
+        ++y
+    )
+    {
+        int level =
+            y - cy;
+
+        int width =
+            std::min(
+                2 + level / 3,
+                7
+            );
+
+        for (
+            int x = cx - width;
+            x <= cx + width;
+            ++x
+        )
+        {
+            if (
+                (std::abs(x - cx) + level) % 3 != 0 ||
+                std::abs(x - cx) < width - 1
+            )
+            {
+                leaf(
+                    x,
+                    y,
+                    TreeKind::Pine
+                );
+            }
+        }
+    }
+}
+
+void World::makeBirchCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        4,
+        3,
+        TreeKind::Birch
+    );
+
+    makeLeafBlob(
+        cx - 3,
+        cy + 2,
+        3,
+        2,
+        TreeKind::Birch
+    );
+
+    makeLeafBlob(
+        cx + 3,
+        cy + 1,
+        3,
+        2,
+        TreeKind::Birch
+    );
+}
+
+void World::makeRedwoodCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        5,
+        3,
+        TreeKind::Redwood
+    );
+
+    makeLeafBlob(
+        cx - 3,
+        cy + 5,
+        4,
+        2,
+        TreeKind::Redwood
+    );
+
+    makeLeafBlob(
+        cx + 3,
+        cy + 8,
+        4,
+        2,
+        TreeKind::Redwood
+    );
+}
+
+void World::makeAcaciaCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx - 4,
+        cy + 1,
+        5,
+        2,
+        TreeKind::Acacia
+    );
+
+    makeLeafBlob(
+        cx + 4,
+        cy + 1,
+        5,
+        2,
+        TreeKind::Acacia
+    );
+
+    makeLeafBlob(
+        cx,
+        cy - 1,
+        3,
+        2,
+        TreeKind::Acacia
+    );
+}
+
+void World::makePurpleheartCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        4,
+        4,
+        TreeKind::Purpleheart
+    );
+
+    makeLeafBlob(
+        cx - 3,
+        cy + 4,
+        3,
+        2,
+        TreeKind::Purpleheart
+    );
+
+    makeLeafBlob(
+        cx + 3,
+        cy + 5,
+        3,
+        2,
+        TreeKind::Purpleheart
+    );
+}
+
+void World::makeEbonyCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        4,
+        4,
+        TreeKind::Ebony
+    );
+
+    makeLeafBlob(
+        cx - 4,
+        cy + 3,
+        3,
+        2,
+        TreeKind::Ebony
+    );
+
+    makeLeafBlob(
+        cx + 4,
+        cy + 4,
+        3,
+        2,
+        TreeKind::Ebony
+    );
+}
+
+void World::makeLeafBlob(
+    int cx,
+    int cy,
+    int rx,
+    int ry,
+    TreeKind kind
+)
+{
+    for (
+        int y = cy - ry;
+        y <= cy + ry;
+        ++y
+    )
+    {
+        for (
+            int x = cx - rx;
+            x <= cx + rx;
+            ++x
+        )
+        {
+            if (!inside(x, y))
+                continue;
+
+            float dx =
+                (x - cx) /
+                static_cast<float>(rx);
+
+            float dy =
+                (y - cy) /
+                static_cast<float>(ry);
+
+            float n =
+                noise2D(
+                    x * 3,
+                    y * 2,
+                    1.5f
+                );
+
+            if (
+                dx * dx +
+                dy * dy <
+                1.0f +
+                n * 0.20f
+            )
+            {
+                leaf(
+                    x,
+                    y,
+                    kind
+                );
+            }
+        }
+    }
+}
+
+
+// ============================================================
+// WATER / GAS
+// ============================================================
+
+void World::makeWater(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    Type type =
+        at(x, y).type;
+
+    if (
+        type == Type::Empty ||
+        type == Type::Oxygen ||
+        type == Type::Water
+    )
+    {
+        at(x, y).type =
+            Type::Water;
+
+        at(x, y).amount =
+            std::min(
+                1.0f,
+                at(x, y).amount + 0.75f
+            );
+
+        at(x, y).temperature =
+            20.0f;
+    }
+}
+
+void World::moveWater(
+    int x1,
+    int y1,
+    int x2,
+    int y2,
+    float rate
+)
+{
+    if (!inside(x2, y2))
+        return;
+
+    Type destination =
+        at(x2, y2).type;
+
+    if (
+        destination != Type::Empty &&
+        destination != Type::Oxygen &&
+        destination != Type::Water
+    )
+        return;
+
+    Tile& a = at(x1, y1);
+    Tile& b = at(x2, y2);
+
+    if (
+        a.type != Type::Water ||
+        a.amount <= 0.001f
+    )
+        return;
+
+    if (
+        b.type == Type::Empty ||
+        b.type == Type::Oxygen
+    )
+    {
+        b.type =
+            Type::Water;
+
+        b.amount =
+            0.0f;
+
+        b.temperature =
+            a.temperature;
+    }
+
+    float capacity =
+        1.0f -
+        b.amount;
+
+    if (capacity <= 0.001f)
+        return;
+
+    float transfer =
+        std::min(
+            a.amount,
+            capacity
+        ) * rate;
+
+    a.amount -= transfer;
+    b.amount += transfer;
+}
+
+void World::stepWater()
+{
+    for (
+        int y = WORLD_H - 2;
+        y >= 0;
+        --y
+    )
+    {
+        for (
+            int x = 1;
+            x < WORLD_W - 1;
+            ++x
+        )
+        {
+            if (at(x, y).type == Type::Water)
+            {
+                moveWater(
+                    x,
+                    y,
+                    x,
+                    y + 1,
+                    0.98f
+                );
+            }
+        }
+    }
+
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        for (
+            int y = WORLD_H - 2;
+            y >= 0;
+            --y
+        )
+        {
+            int start =
+                (pass & 1)
+                ? WORLD_W - 2
+                : 1;
+
+            int end =
+                (pass & 1)
+                ? 0
+                : WORLD_W - 1;
+
+            int direction =
+                (pass & 1)
+                ? -1
+                : 1;
+
+            for (
+                int x = start;
+                x != end;
+                x += direction
+            )
+            {
+                if (at(x, y).type != Type::Water)
+                    continue;
+
+                for (int side = 0; side < 2; ++side)
+                {
+                    int nx =
+                        side == 0
+                        ? x - 1
+                        : x + 1;
+
+                    if (!inside(nx, y))
+                        continue;
+
+                    Type nt =
+                        at(nx, y).type;
+
+                    if (
+                        nt != Type::Empty &&
+                        nt != Type::Oxygen &&
+                        nt != Type::Water
+                    )
+                        continue;
+
+                    float a =
+                        at(x, y).amount;
+
+                    float b =
+                        nt == Type::Water
+                        ? at(nx, y).amount
+                        : 0.0f;
+
+                    if (a <= b + 0.002f)
+                        continue;
+
+                    float transfer =
+                        (a - b) * 0.30f;
+
+                    transfer =
+                        std::min(
+                            transfer,
+                            at(x, y).amount
+                        );
+
+                    if (
+                        nt == Type::Empty ||
+                        nt == Type::Oxygen
+                    )
+                    {
+                        at(nx, y).type =
+                            Type::Water;
+
+                        at(nx, y).amount =
+                            0.0f;
+                    }
+
+                    at(x, y).amount -=
+                        transfer;
+
+                    at(nx, y).amount +=
+                        transfer;
+                }
+            }
+        }
+    }
+
+    cleanFluids();
+}
+
+void World::makeGas(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    if (
+        at(x, y).type == Type::Empty ||
+        at(x, y).type == Type::Oxygen
+    )
+    {
+        at(x, y).type =
+            Type::Gas;
+
+        at(x, y).amount =
+            1.0f;
+
+        at(x, y).pressure =
+            1.0f;
+    }
+}
+
+void World::diffuseGas(
+    int x1,
+    int y1,
+    int x2,
+    int y2
+)
+{
+    if (!inside(x2, y2))
+        return;
+
+    Type destination =
+        at(x2, y2).type;
+
+    if (
+        destination != Type::Empty &&
+        destination != Type::Oxygen &&
+        destination != Type::Gas
+    )
+        return;
+
+    Tile& a = at(x1, y1);
+    Tile& b = at(x2, y2);
+
+    if (
+        b.type == Type::Empty ||
+        b.type == Type::Oxygen
+    )
+    {
+        b.type =
+            Type::Gas;
+
+        b.amount =
+            0.0f;
+    }
+
+    float difference =
+        a.amount -
+        b.amount;
+
+    if (difference <= 0.001f)
+        return;
+
+    float transfer =
+        difference * 0.12f;
+
+    a.amount -= transfer;
+    b.amount += transfer;
+}
+
+void World::stepGas()
+{
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        for (
+            int y = 1;
+            y < WORLD_H - 1;
+            ++y
+        )
+        {
+            for (
+                int x = 1;
+                x < WORLD_W - 1;
+                ++x
+            )
+            {
+                if (at(x, y).type != Type::Gas)
+                    continue;
+
+                diffuseGas(x, y, x + 1, y);
+                diffuseGas(x, y, x - 1, y);
+                diffuseGas(x, y, x, y - 1);
+                diffuseGas(x, y, x, y + 1);
+            }
+        }
+    }
+
+    cleanFluids();
+}
+
+void World::cleanFluids()
+{
+    for (Tile& tile : cells)
+    {
+        if (
+            tile.type == Type::Water &&
+            tile.amount <= 0.001f
+        )
+        {
+            tile = Tile{};
+        }
+
+        if (
+            tile.type == Type::Gas &&
+            tile.amount <= 0.001f
+        )
+        {
+            tile = Tile{};
+        }
+    }
+}
+
+void World::step()
+{
+    stepWater();
+    stepGas();
+}
+
+void World::dig(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    if (
+        x == 0 ||
+        x == WORLD_W - 1 ||
+        y == WORLD_H - 1
+    )
+        return;
+
+    if (!solid(x, y))
+        return;
+
+    at(x, y) = Tile{};
+
+    if (y < surface[x])
+    {
+        at(x, y).type =
+            Type::Oxygen;
+
+        at(x, y).amount =
+            1.0f;
+
+        at(x, y).pressure =
+            1.0f;
+
+        at(x, y).temperature =
+            20.0f;
+    }
+}
+
+float World::totalWater() const
+{
+    float total = 0.0f;
+
+    for (const Tile& tile : cells)
+    {
+        if (tile.type == Type::Water)
+            total += tile.amount;
+    }
+
+    return total;
+}
+
+
+// ============================================================
+// END FILE: core/World.cpp
+// ============================================================
