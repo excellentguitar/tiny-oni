@@ -26,6 +26,7 @@ public:
     void generate();
 
     void dig(int x, int y);
+	   void chop(int x, int y);
     void makeWater(int x, int y);
     void makeGas(int x, int y);
 

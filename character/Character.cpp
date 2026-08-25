@@ -4,6 +4,8 @@
 
 #include <cmath>
 
+extern Sound jumpSound;
+
 void Character::initialise(
     Vector2 startPosition
 )
@@ -47,7 +49,11 @@ void Character::update(
             -jumpSpeed;
 
         grounded = false;
+		  PlaySound(jumpSound);
     }
+	
+	
+	
 
     velocity.y +=
         gravity *
@@ -462,4 +468,9 @@ void Character::draw() const
 Vector2 Character::getPosition() const
 {
     return position;
+}
+
+bool Character::isMoving() const
+{
+    return velocity.x != 0.0f;
 }

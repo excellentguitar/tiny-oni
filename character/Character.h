@@ -21,6 +21,7 @@ public:
 
     Vector2 getPosition() const;
 
+bool isMoving() const;
 private:
 
     Vector2 position{};

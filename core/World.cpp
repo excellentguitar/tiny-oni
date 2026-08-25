@@ -1941,6 +1941,18 @@ void World::dig(int x, int y)
     }
 }
 
+void World::chop(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    if (at(x, y).type != Type::Wood)
+        return;
+
+    at(x, y) = Tile{};
+}
+
+
 float World::totalWater() const
 {
     float total = 0.0f;

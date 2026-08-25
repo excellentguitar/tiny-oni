@@ -1,8 +1,6 @@
 #include "raylib.h"
 #include "Camera.h"
-
 #include <algorithm>
-#include <cmath>
 
 void GameCamera::initialise(
     float worldPixelWidth,
@@ -21,40 +19,41 @@ void GameCamera::initialise(
         screenHeight / 2.0f
     };
 
-	raylib.rotation = 0.0f;
+    raylib.rotation = 0.0f;
     raylib.zoom = 1.0f;
 }
 
 void GameCamera::update(
     float dt,
     int,
-    int
+    int,
+    Vector2 playerPosition,
+    bool playerMoving
 )
 {
-    float speed =
-        900.0f *
-        dt /
-        raylib.zoom;
+    float speed = 900.0f * dt / raylib.zoom;
 
- if (IsKeyDown(KEY_LEFT))
-    raylib.target.x -= speed;
+    if (playerMoving)
+    {
+        raylib.target.x = playerPosition.x;
+        raylib.target.y = playerPosition.y;
+    }
+    else
+    {
+        if (IsKeyDown(KEY_LEFT))
+            raylib.target.x -= speed;
 
-if (IsKeyDown(KEY_RIGHT))
-    raylib.target.x += speed;
+        if (IsKeyDown(KEY_RIGHT))
+            raylib.target.x += speed;
 
-if (IsKeyDown(KEY_UP))
-    raylib.target.y -= speed;
+        if (IsKeyDown(KEY_UP))
+            raylib.target.y -= speed;
 
-if (IsKeyDown(KEY_DOWN))
-    raylib.target.y += speed;
+        if (IsKeyDown(KEY_DOWN))
+            raylib.target.y += speed;
+    }
 
-    // Deliberately NO world-edge clamping.
-    //
-    // The camera is allowed to move completely outside
-    // the generated world. Empty space is rendered black.
-
-    float wheel =
-        GetMouseWheelMove();
+    float wheel = GetMouseWheelMove();
 
     if (wheel != 0.0f)
     {
@@ -94,13 +93,8 @@ void GameCamera::zoomAtMouse(
             raylib
         );
 
-    raylib.target.x +=
-        before.x -
-        after.x;
-
-    raylib.target.y +=
-        before.y -
-        after.y;
+    raylib.target.x += before.x - after.x;
+    raylib.target.y += before.y - after.y;
 }
 
 Vector2 GameCamera::screenToWorld(

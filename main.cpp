@@ -12,6 +12,8 @@
 #include <ctime>
 #include <vector>
 
+Sound jumpSound;
+
 
 int main()
 {
@@ -29,6 +31,19 @@ int main()
         SCREEN_H,
         "Tiny ONI"
     );
+InitAudioDevice();
+jumpSound = LoadSound("sounds/boing.mp3");
+
+if (!IsSoundValid(jumpSound))
+{
+    printf("ERROR: Could not load boing.mp3\n");
+}
+else
+{
+    printf("Loaded boing.mp3 OK\n");
+}
+
+
 
     SetTargetFPS(60);
 
@@ -199,14 +214,16 @@ player.update(
         camera.update(
             dt,
             SCREEN_W,
-            SCREEN_H
+            SCREEN_H,
+            player.getPosition(),
+            player.isMoving()
         );
 
         // ----------------------------------------------------
         // SIMULATION CONTROLS
         // ----------------------------------------------------
 
-        if (IsKeyPressed(KEY_SPACE))
+        if (IsKeyPressed(KEY_P))
             paused = !paused;
 
         if (IsKeyPressed(KEY_R))
@@ -365,6 +382,14 @@ player.update(
         )
         {
             world.dig(
+                tileX,
+                tileY
+            );
+        }
+		
+		        if (IsKeyPressed(KEY_E))
+        {
+            world.chop(
                 tileX,
                 tileY
             );
@@ -636,9 +661,11 @@ ui.draw(
         EndDrawing();
     }
 
-    CloseWindow();
+UnloadSound(jumpSound);
+CloseAudioDevice();
+CloseWindow();
 
-    return 0;
+return 0;
 }
 
 
