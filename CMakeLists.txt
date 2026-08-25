@@ -9,14 +9,12 @@ add_executable(tiny_oni
     main.cpp
 
     core/World.cpp
-
+    core/Materials.cpp
     camera/Camera.cpp
-
+    character/Character.cpp
     rendering/Sky.cpp
     rendering/WorldRenderer.cpp
-
     persistence/Save.cpp
-
     ui/UI.cpp
 )
 

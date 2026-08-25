@@ -1,9 +1,12 @@
 #include "raylib.h"
 
-#include "World.h"
-#include "Camera.h"
-#include "WorldRenderer.h"
-#include "UI.h"
+#include "core/World.h"
+#include "character/Character.h"
+#include "camera/Camera.h"
+#include "rendering/WorldRenderer.h"
+#include "ui/UI.h"
+#include "persistence/Save.h"
+#include "rendering/Sky.h"
 
 #include <cstdlib>
 #include <ctime>
@@ -32,6 +35,41 @@ int main()
     World world;
 
     world.generate();
+	Character player;
+
+int spawnX =
+    WORLD_W / 2;
+
+float spawnY =
+    100.0f;
+
+player.initialise({
+    spawnX * TILE_SIZE +
+        TILE_SIZE / 2.0f,
+
+    spawnY
+});
+
+	
+	std::printf(
+    "[WORLD] W=%d H=%d TILE=%d PIXELS=%dx%d\n",
+    WORLD_W,
+    WORLD_H,
+    TILE_SIZE,
+    WORLD_W * TILE_SIZE,
+    WORLD_H * TILE_SIZE
+);
+
+std::printf(
+    "[WORLD] centre tile=(%d,%d) type=%d\n",
+    WORLD_W / 2,
+    WORLD_H / 2,
+    static_cast<int>(
+        world.at(WORLD_W / 2, WORLD_H / 2).type
+    )
+);
+
+
 
     GameCamera camera;
 
@@ -41,6 +79,17 @@ int main()
         SCREEN_W,
         SCREEN_H
     );
+	std::printf(
+    "[CAMERA] X=%.2f Y=%.2f Zoom=%.3f\n",
+    camera.raylib.target.x,
+    camera.raylib.target.y,
+    camera.raylib.zoom
+);
+
+std::printf(
+    "[WORLD] size=%zu tiles\n",
+    world.cells.size()
+);
 
     WorldRenderer renderer;
     GameUI ui;
@@ -104,6 +153,17 @@ int main()
     {
         float dt =
             GetFrameTime();
+			
+			
+			
+			// UPDATE SECTION
+			
+player.update(
+    dt,
+    world
+);
+			
+			
 
         // ----------------------------------------------------
         // TIME
@@ -476,32 +536,34 @@ int main()
         // We calculate whether the camera view intersects
         // the atmosphere before drawing it.
 
-        Vector2 cameraTop =
-            camera.screenToWorld(
-                {0, 0}
-            );
 
-        Vector2 cameraBottom =
-            camera.screenToWorld(
-                {
-                    static_cast<float>(SCREEN_W),
-                    static_cast<float>(SCREEN_H)
-                }
-            );
+Vector2 cameraTop =
+    camera.screenToWorld(
+        {0, 0}
+    );
 
-        bool viewHasSky =
-            cameraBottom.y > 0.0f &&
-            cameraTop.y <
-                WORLD_H * TILE_SIZE;
-
-        if (viewHasSky)
+Vector2 cameraBottom =
+    camera.screenToWorld(
         {
-            drawSky(
-                SCREEN_W,
-                SCREEN_H,
-                timeOfDay
-            );
+            static_cast<float>(SCREEN_W),
+            static_cast<float>(SCREEN_H)
         }
+    );
+
+bool viewHasSky =
+    cameraBottom.y > 0.0f &&
+    cameraTop.y <
+        WORLD_H * TILE_SIZE;
+
+if (viewHasSky)
+{
+    drawSky(
+        SCREEN_W,
+        SCREEN_H,
+        timeOfDay
+    );
+}
+
 
         BeginMode2D(
             camera.raylib
@@ -515,6 +577,8 @@ int main()
             tileX,
             tileY
         );
+		player.draw();
+
 
         EndMode2D();
 
@@ -548,18 +612,26 @@ int main()
         // UI
         // ----------------------------------------------------
 
-        ui.draw(
-            world,
-            SCREEN_W,
-            SCREEN_H,
-            tileX,
-            tileY,
-            paused,
-            timePaused,
-            showUI,
-            timeOfDay,
-            simulationInterval
-        );
+/*
+std::printf(
+    "[CAMERA] X=%.2f Y=%.2f Zoom=%.3f\n",
+    camera.raylib.target.x,
+    camera.raylib.target.y,
+    camera.raylib.zoom
+);*/
+ui.draw(
+    world,
+    camera,
+    SCREEN_W,
+    SCREEN_H,
+    tileX,
+    tileY,
+    paused,
+    timePaused,
+    showUI,
+    timeOfDay,
+    simulationInterval
+);
 
         EndDrawing();
     }

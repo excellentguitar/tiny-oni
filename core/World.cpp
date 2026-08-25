@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <iostream>
+
 World::World()
     : cells(
         static_cast<size_t>(WORLD_W) *
@@ -76,6 +78,29 @@ bool World::solid(int x, int y) const
     return solidType(at(x, y).type);
 }
 
+bool World::characterSolid(int x, int y) const
+{
+    if (!inside(x, y))
+        return true;
+
+    Type type =
+        at(x, y).type;
+
+    switch (type)
+    {
+        case Type::Empty:
+        case Type::Oxygen:
+        case Type::Water:
+        case Type::Gas:
+        case Type::Wood:
+        case Type::Leaves:
+            return false;
+
+        default:
+            return solidType(type);
+    }
+}
+
 bool World::open(int x, int y) const
 {
     if (!inside(x, y))
@@ -137,6 +162,7 @@ float World::noise2D(
 
 void World::generate()
 {
+	std::cout << "[WORLD] Generation started...\n";
     std::fill(
         cells.begin(),
         cells.end(),
@@ -297,6 +323,7 @@ void World::generate()
     }
 
     generateCaves();
+	std::cout << "[WORLD] Generating caves...\n";
 
     for (int i = 0; i < 34; ++i)
     {
@@ -480,12 +507,96 @@ void World::generate()
         }
     }
 
-    generateMagma();
 
-    fillSurfaceOxygen();
 
-    generateTrees();
+std::cout << "[WORLD] Generating magma...\n";
+generateMagma();
+
+std::cout << "[WORLD] Filling surface oxygen...\n";
+fillSurfaceOxygen();
+
+std::cout << "[WORLD] Generating trees...\n";
+generateTrees();
+
+int empty = 0;
+int oxygen = 0;
+int grass = 0;
+int dirt = 0;
+int clay = 0;
+int claystone = 0;
+int sand = 0;
+int sandstone = 0;
+int chalk = 0;
+int limestone = 0;
+int granite = 0;
+int basalt = 0;
+int gravel = 0;
+int copper = 0;
+int iron = 0;
+int coal = 0;
+int water = 0;
+int gas = 0;
+int magma = 0;
+int wood = 0;
+int leaves = 0;
+
+for (const Tile& tile : cells)
+{
+    switch (tile.type)
+    {
+        case Type::Empty:      ++empty; break;
+        case Type::Oxygen:     ++oxygen; break;
+        case Type::Grass:      ++grass; break;
+        case Type::Dirt:       ++dirt; break;
+        case Type::Clay:       ++clay; break;
+        case Type::Claystone:  ++claystone; break;
+        case Type::Sand:       ++sand; break;
+        case Type::Sandstone:  ++sandstone; break;
+        case Type::Chalk:      ++chalk; break;
+        case Type::Limestone:  ++limestone; break;
+        case Type::Granite:    ++granite; break;
+        case Type::Basalt:     ++basalt; break;
+        case Type::Gravel:     ++gravel; break;
+        case Type::Copper:     ++copper; break;
+        case Type::Iron:       ++iron; break;
+        case Type::Coal:       ++coal; break;
+        case Type::Water:      ++water; break;
+        case Type::Gas:        ++gas; break;
+        case Type::Magma:      ++magma; break;
+        case Type::Wood:       ++wood; break;
+        case Type::Leaves:     ++leaves; break;
+    }
 }
+
+std::cout << "\n========== WORLD GENERATION ==========\n";
+std::cout << "Empty:      " << empty << '\n';
+std::cout << "Oxygen:     " << oxygen << '\n';
+std::cout << "Grass:      " << grass << '\n';
+std::cout << "Dirt:       " << dirt << '\n';
+std::cout << "Clay:       " << clay << '\n';
+std::cout << "Claystone:  " << claystone << '\n';
+std::cout << "Sand:       " << sand << '\n';
+std::cout << "Sandstone:  " << sandstone << '\n';
+std::cout << "Chalk:      " << chalk << '\n';
+std::cout << "Limestone:  " << limestone << '\n';
+std::cout << "Granite:    " << granite << '\n';
+std::cout << "Basalt:     " << basalt << '\n';
+std::cout << "Gravel:     " << gravel << '\n';
+std::cout << "Copper:     " << copper << '\n';
+std::cout << "Iron:       " << iron << '\n';
+std::cout << "Coal:       " << coal << '\n';
+std::cout << "Water:      " << water << '\n';
+std::cout << "Gas:        " << gas << '\n';
+std::cout << "Magma:      " << magma << '\n';
+std::cout << "Wood:       " << wood << '\n';
+std::cout << "Leaves:     " << leaves << '\n';
+std::cout << "======================================\n";
+std::cout << "[WORLD] Generation complete.\n\n";
+
+
+} // generate end
+
+
 
 void World::addRockMass(
     int cx,

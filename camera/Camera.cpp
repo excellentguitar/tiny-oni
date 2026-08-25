@@ -21,6 +21,7 @@ void GameCamera::initialise(
         screenHeight / 2.0f
     };
 
+	raylib.rotation = 0.0f;
     raylib.zoom = 1.0f;
 }
 
@@ -35,37 +36,17 @@ void GameCamera::update(
         dt /
         raylib.zoom;
 
-    if (
-        IsKeyDown(KEY_A) ||
-        IsKeyDown(KEY_LEFT)
-    )
-    {
-        raylib.target.x -= speed;
-    }
+ if (IsKeyDown(KEY_LEFT))
+    raylib.target.x -= speed;
 
-    if (
-        IsKeyDown(KEY_D) ||
-        IsKeyDown(KEY_RIGHT)
-    )
-    {
-        raylib.target.x += speed;
-    }
+if (IsKeyDown(KEY_RIGHT))
+    raylib.target.x += speed;
 
-    if (
-        IsKeyDown(KEY_W) ||
-        IsKeyDown(KEY_UP)
-    )
-    {
-        raylib.target.y -= speed;
-    }
+if (IsKeyDown(KEY_UP))
+    raylib.target.y -= speed;
 
-    if (
-        IsKeyDown(KEY_S) ||
-        IsKeyDown(KEY_DOWN)
-    )
-    {
-        raylib.target.y += speed;
-    }
+if (IsKeyDown(KEY_DOWN))
+    raylib.target.y += speed;
 
     // Deliberately NO world-edge clamping.
     //

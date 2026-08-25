@@ -1,0 +1,4476 @@
+============================================================
+FILE: CMakeLists.txt
+============================================================
+cmake_minimum_required(VERSION 3.20)
+
+project(tiny_oni LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_executable(tiny_oni
+    main.cpp
+
+    core/World.cpp
+
+    camera/Camera.cpp
+
+    rendering/Sky.cpp
+    rendering/WorldRenderer.cpp
+
+    persistence/Save.cpp
+
+    ui/UI.cpp
+)
+
+target_include_directories(tiny_oni PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    C:/dev/raylib/include
+)
+
+target_link_directories(tiny_oni PRIVATE
+    C:/dev/raylib/lib
+)
+
+target_link_libraries(tiny_oni PRIVATE
+    raylib
+    winmm
+    gdi32
+    opengl32
+)
+============================================================
+FILE: camera/Camera.cpp
+============================================================
+#include "raylib.h"
+#include "Camera.h"
+
+#include <algorithm>
+#include <cmath>
+
+void GameCamera::initialise(
+    float worldPixelWidth,
+    float worldPixelHeight,
+    int screenWidth,
+    int screenHeight
+)
+{
+    raylib.target = {
+        worldPixelWidth / 2.0f,
+        worldPixelHeight / 2.0f
+    };
+
+    raylib.offset = {
+        screenWidth / 2.0f,
+        screenHeight / 2.0f
+    };
+
+    raylib.zoom = 1.0f;
+}
+
+void GameCamera::update(
+    float dt,
+    int,
+    int
+)
+{
+    float speed =
+        900.0f *
+        dt /
+        raylib.zoom;
+
+    if (
+        IsKeyDown(KEY_A) ||
+        IsKeyDown(KEY_LEFT)
+    )
+    {
+        raylib.target.x -= speed;
+    }
+
+    if (
+        IsKeyDown(KEY_D) ||
+        IsKeyDown(KEY_RIGHT)
+    )
+    {
+        raylib.target.x += speed;
+    }
+
+    if (
+        IsKeyDown(KEY_W) ||
+        IsKeyDown(KEY_UP)
+    )
+    {
+        raylib.target.y -= speed;
+    }
+
+    if (
+        IsKeyDown(KEY_S) ||
+        IsKeyDown(KEY_DOWN)
+    )
+    {
+        raylib.target.y += speed;
+    }
+
+    // Deliberately NO world-edge clamping.
+    //
+    // The camera is allowed to move completely outside
+    // the generated world. Empty space is rendered black.
+
+    float wheel =
+        GetMouseWheelMove();
+
+    if (wheel != 0.0f)
+    {
+        zoomAtMouse(
+            GetMousePosition(),
+            wheel
+        );
+    }
+}
+
+void GameCamera::zoomAtMouse(
+    Vector2 mousePosition,
+    float wheel
+)
+{
+    Vector2 before =
+        GetScreenToWorld2D(
+            mousePosition,
+            raylib
+        );
+
+    raylib.zoom *=
+        wheel > 0.0f
+        ? 1.12f
+        : 0.89f;
+
+    raylib.zoom =
+        std::clamp(
+            raylib.zoom,
+            0.20f,
+            5.0f
+        );
+
+    Vector2 after =
+        GetScreenToWorld2D(
+            mousePosition,
+            raylib
+        );
+
+    raylib.target.x +=
+        before.x -
+        after.x;
+
+    raylib.target.y +=
+        before.y -
+        after.y;
+}
+
+Vector2 GameCamera::screenToWorld(
+    Vector2 screen
+) const
+{
+    return GetScreenToWorld2D(
+        screen,
+        raylib
+    );
+}
+
+============================================================
+FILE: camera/Camera.h
+============================================================
+#pragma once
+
+#include "raylib.h"
+
+class GameCamera
+{
+public:
+
+    Camera2D raylib;
+
+    void initialise(
+        float worldWidth,
+        float worldHeight,
+        int screenWidth,
+        int screenHeight
+    );
+
+    void update(
+        float dt,
+        int screenWidth,
+        int screenHeight
+    );
+
+    Vector2 screenToWorld(
+        Vector2 screenPosition
+    ) const;
+
+private:
+
+    void zoomAtMouse(
+        Vector2 mousePosition,
+        float wheel
+    );
+};
+============================================================
+FILE: core/Materials.h
+============================================================
+// ============================================================
+
+Color materialColor(Type type)
+{
+    switch (type)
+    {
+        case Type::Grass:
+            return {72, 150, 65, 255};
+
+        case Type::Dirt:
+            return {125, 82, 48, 255};
+
+        case Type::Clay:
+            return {177, 103, 67, 255};
+
+        case Type::Claystone:
+            return {145, 92, 76, 255};
+
+        case Type::Sand:
+            return {222, 194, 115, 255};
+
+        case Type::Sandstone:
+            return {194, 139, 82, 255};
+
+        case Type::Chalk:
+            return {220, 216, 195, 255};
+
+        case Type::Limestone:
+            return {188, 184, 164, 255};
+
+        case Type::Granite:
+            return {105, 112, 125, 255};
+
+        case Type::Basalt:
+            return {63, 68, 73, 255};
+
+        case Type::Gravel:
+            return {126, 124, 116, 255};
+
+        case Type::Copper:
+            return {190, 104, 58, 255};
+
+        case Type::Iron:
+            return {130, 62, 48, 255};
+
+        case Type::Coal:
+            return {38, 38, 42, 255};
+
+        case Type::Water:
+            return {45, 135, 225, 145};
+
+        case Type::Gas:
+            return {100, 190, 230, 45};
+
+        case Type::Magma:
+            return {235, 72, 22, 255};
+
+        case Type::Wood:
+            return {112, 72, 42, 255};
+
+        case Type::Leaves:
+            return {55, 125, 55, 255};
+
+        default:
+            return {18, 20, 24, 255};
+    }
+}
+
+const char* materialName(Type type)
+{
+    switch (type)
+    {
+        case Type::Grass:      return "Grass";
+        case Type::Dirt:       return "Dirt";
+        case Type::Clay:       return "Clay";
+        case Type::Claystone:  return "Claystone";
+        case Type::Sand:       return "Sand";
+        case Type::Sandstone:  return "Sandstone";
+        case Type::Chalk:      return "Chalk";
+        case Type::Limestone:  return "Limestone";
+        case Type::Granite:    return "Granite";
+        case Type::Basalt:     return "Basalt";
+        case Type::Gravel:     return "Gravel";
+        case Type::Copper:     return "Copper";
+        case Type::Iron:       return "Iron";
+        case Type::Coal:       return "Coal";
+        case Type::Water:      return "Water";
+        case Type::Gas:        return "Gas";
+        case Type::Magma:      return "Magma";
+        case Type::Wood:       return "Wood";
+        case Type::Leaves:     return "Leaves";
+        case Type::Oxygen:     return "Oxygen";
+        default:               return "Empty";
+    }
+}
+
+
+// ============================================================
+// END FILE: core/Materials.h
+// ============================================================
+
+============================================================
+FILE: core/Types.h
+============================================================
+// ============================================================
+
+#pragma once
+
+#include "raylib.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
+static constexpr int WORLD_W = 960;
+static constexpr int WORLD_H = 140;
+static constexpr int TILE_SIZE = 10;
+
+enum class Type : uint8_t
+{
+    Empty,
+    Oxygen,
+
+    Grass,
+    Dirt,
+    Clay,
+    Claystone,
+    Sand,
+    Sandstone,
+    Chalk,
+    Limestone,
+
+    Granite,
+    Basalt,
+    Gravel,
+
+    Copper,
+    Iron,
+    Coal,
+
+    Water,
+    Gas,
+    Magma,
+
+    Wood,
+    Leaves
+};
+
+struct Tile
+{
+    Type type = Type::Empty;
+
+    float amount = 0.0f;
+    float pressure = 0.0f;
+    float temperature = 22.0f;
+};
+
+struct RainDrop
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float speed = 300.0f;
+};
+
+
+// ============================================================
+// END FILE: core/Types.h
+// ============================================================
+
+============================================================
+FILE: core/World.cpp
+============================================================
+#include "World.h"
+#include "Types.h"
+#include "Materials.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+World::World()
+    : cells(
+        static_cast<size_t>(WORLD_W) *
+        static_cast<size_t>(WORLD_H)
+      ),
+      surface(WORLD_W, 40)
+{
+}
+
+Tile& World::at(int x, int y)
+{
+    return cells[
+        static_cast<size_t>(y) *
+        static_cast<size_t>(WORLD_W) +
+        static_cast<size_t>(x)
+    ];
+}
+
+const Tile& World::at(int x, int y) const
+{
+    return cells[
+        static_cast<size_t>(y) *
+        static_cast<size_t>(WORLD_W) +
+        static_cast<size_t>(x)
+    ];
+}
+
+bool World::inside(int x, int y) const
+{
+    return
+        x >= 0 &&
+        x < WORLD_W &&
+        y >= 0 &&
+        y < WORLD_H;
+}
+
+bool World::solidType(Type type) const
+{
+    switch (type)
+    {
+        case Type::Grass:
+        case Type::Dirt:
+        case Type::Clay:
+        case Type::Claystone:
+        case Type::Sand:
+        case Type::Sandstone:
+        case Type::Chalk:
+        case Type::Limestone:
+        case Type::Granite:
+        case Type::Basalt:
+        case Type::Gravel:
+        case Type::Copper:
+        case Type::Iron:
+        case Type::Coal:
+        case Type::Wood:
+        case Type::Leaves:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool World::solid(int x, int y) const
+{
+    if (!inside(x, y))
+        return true;
+
+    return solidType(at(x, y).type);
+}
+
+bool World::open(int x, int y) const
+{
+    if (!inside(x, y))
+        return false;
+
+    switch (at(x, y).type)
+    {
+        case Type::Empty:
+        case Type::Oxygen:
+        case Type::Water:
+        case Type::Gas:
+        case Type::Magma:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+float World::noise1D(float x, float scale) const
+{
+    return
+        std::sin(x * 0.043f * scale) * 0.55f +
+        std::sin(x * 0.091f * scale + 2.1f) * 0.30f +
+        std::sin(x * 0.173f * scale + 5.7f) * 0.15f;
+}
+
+float World::noise2D(
+    int x,
+    int y,
+    float scale
+) const
+{
+    float a =
+        std::sin(
+            x * 0.071f * scale +
+            y * 0.037f * scale
+        );
+
+    float b =
+        std::sin(
+            x * 0.131f * scale -
+            y * 0.083f * scale +
+            2.7f
+        );
+
+    float c =
+        std::sin(
+            x * 0.023f * scale +
+            y * 0.157f * scale +
+            4.1f
+        );
+
+    return
+        a * 0.50f +
+        b * 0.30f +
+        c * 0.20f;
+}
+
+void World::generate()
+{
+    std::fill(
+        cells.begin(),
+        cells.end(),
+        Tile{}
+    );
+
+    for (int x = 0; x < WORLD_W; ++x)
+    {
+        float n =
+            noise1D(
+                static_cast<float>(x),
+                1.0f
+            );
+
+        int height =
+            38 +
+            static_cast<int>(n * 12.0f);
+
+        height +=
+            static_cast<int>(
+                std::sin(x * 0.018f) * 8.0f
+            );
+
+        surface[x] =
+            std::clamp(
+                height,
+                25,
+                60
+            );
+    }
+
+    for (int x = 1; x < WORLD_W - 1; ++x)
+    {
+        int s = surface[x];
+
+        for (int y = s; y < WORLD_H - 1; ++y)
+        {
+            int depth = y - s;
+
+            Type type = Type::Dirt;
+
+            if (depth == 0)
+            {
+                type = Type::Grass;
+            }
+            else if (depth <= 3)
+            {
+                type =
+                    noise2D(x, y, 1.0f) > 0.35f
+                    ? Type::Clay
+                    : Type::Dirt;
+            }
+            else if (depth <= 7)
+            {
+                type =
+                    noise2D(x, y, 1.2f) > 0.25f
+                    ? Type::Sand
+                    : Type::Dirt;
+            }
+            else if (depth <= 15)
+            {
+                float n =
+                    noise2D(x, y, 0.9f);
+
+                if (n > 0.55f)
+                    type = Type::Sandstone;
+                else if (n < -0.55f)
+                    type = Type::Claystone;
+                else
+                    type = Type::Dirt;
+            }
+            else if (depth <= 25)
+            {
+                float n =
+                    noise2D(x, y, 0.75f);
+
+                if (n > 0.55f)
+                    type = Type::Sandstone;
+                else if (n < -0.35f)
+                    type = Type::Chalk;
+                else
+                    type = Type::Limestone;
+            }
+            else if (depth <= 42)
+            {
+                float n =
+                    noise2D(x, y, 0.55f);
+
+                if (n > 0.65f)
+                    type = Type::Sandstone;
+                else if (n < -0.45f)
+                    type = Type::Chalk;
+                else
+                    type = Type::Limestone;
+            }
+            else
+            {
+                type = Type::Granite;
+            }
+
+            at(x, y).type = type;
+            at(x, y).amount = 1.0f;
+        }
+    }
+
+    for (int i = 0; i < 22; ++i)
+    {
+        int x =
+            20 + rand() % (WORLD_W - 40);
+
+        int y =
+            surface[x] +
+            18 +
+            rand() % 55;
+
+        int rx =
+            8 + rand() % 25;
+
+        int ry =
+            8 + rand() % 22;
+
+        Type rock =
+            rand() % 3 == 0
+            ? Type::Basalt
+            : Type::Granite;
+
+        addRockMass(
+            x,
+            y,
+            rx,
+            ry,
+            rock
+        );
+    }
+
+    for (int x = 2; x < WORLD_W - 2; ++x)
+    {
+        int s = surface[x];
+
+        for (
+            int y = s + 1;
+            y < std::min(s + 9, WORLD_H - 1);
+            ++y
+        )
+        {
+            if (
+                noise2D(
+                    x * 2,
+                    y * 3,
+                    1.5f
+                ) > 0.78f
+            )
+            {
+                at(x, y).type =
+                    Type::Gravel;
+            }
+        }
+    }
+
+    generateCaves();
+
+    for (int i = 0; i < 34; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int remaining =
+            WORLD_H -
+            surface[x] -
+            20;
+
+        if (remaining <= 1)
+            continue;
+
+        int y =
+            surface[x] +
+            15 +
+            rand() % remaining;
+
+        addCopperVein(
+            x,
+            y,
+            7 + rand() % 18
+        );
+    }
+
+    for (int i = 0; i < 18; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int remaining =
+            WORLD_H -
+            surface[x] -
+            25;
+
+        if (remaining <= 1)
+            continue;
+
+        int y =
+            surface[x] +
+            20 +
+            rand() % remaining;
+
+        addOreCluster(
+            Type::Iron,
+            x,
+            y,
+            8 + rand() % 15
+        );
+    }
+
+    for (int i = 0; i < 14; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int remaining =
+            WORLD_H -
+            surface[x] -
+            15;
+
+        if (remaining <= 1)
+            continue;
+
+        int y =
+            surface[x] +
+            10 +
+            rand() % remaining;
+
+        addCoalSeam(x, y);
+    }
+
+    for (int i = 0; i < 12; ++i)
+    {
+        int cx =
+            20 + rand() % (WORLD_W - 40);
+
+        int cy =
+            surface[cx] +
+            15 +
+            rand() % 30;
+
+        int rx =
+            4 + rand() % 10;
+
+        int ry =
+            2 + rand() % 5;
+
+        for (
+            int y = cy - ry;
+            y <= cy + ry;
+            ++y
+        )
+        {
+            for (
+                int x = cx - rx;
+                x <= cx + rx;
+                ++x
+            )
+            {
+                if (!inside(x, y))
+                    continue;
+
+                float dx =
+                    (x - cx) /
+                    static_cast<float>(rx);
+
+                float dy =
+                    (y - cy) /
+                    static_cast<float>(ry);
+
+                if (
+                    dx * dx +
+                    dy * dy < 1.0f &&
+                    !solid(x, y)
+                )
+                {
+                    at(x, y).type =
+                        Type::Water;
+
+                    at(x, y).amount =
+                        1.0f;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < 7; ++i)
+    {
+        int cx =
+            20 + rand() % (WORLD_W - 40);
+
+        int cy =
+            surface[cx] +
+            20 +
+            rand() % 35;
+
+        int rx =
+            5 + rand() % 12;
+
+        int ry =
+            3 + rand() % 7;
+
+        for (
+            int y = cy - ry;
+            y <= cy + ry;
+            ++y
+        )
+        {
+            for (
+                int x = cx - rx;
+                x <= cx + rx;
+                ++x
+            )
+            {
+                if (!inside(x, y))
+                    continue;
+
+                float dx =
+                    (x - cx) /
+                    static_cast<float>(rx);
+
+                float dy =
+                    (y - cy) /
+                    static_cast<float>(ry);
+
+                if (
+                    dx * dx +
+                    dy * dy < 1.0f &&
+                    !solid(x, y)
+                )
+                {
+                    at(x, y).type =
+                        Type::Gas;
+
+                    at(x, y).amount =
+                        1.0f;
+                }
+            }
+        }
+    }
+
+    generateMagma();
+
+    fillSurfaceOxygen();
+
+    generateTrees();
+}
+
+void World::addRockMass(
+    int cx,
+    int cy,
+    int rx,
+    int ry,
+    Type rock
+)
+{
+    for (
+        int y = cy - ry;
+        y <= cy + ry;
+        ++y
+    )
+    {
+        for (
+            int x = cx - rx;
+            x <= cx + rx;
+            ++x
+        )
+        {
+            if (!inside(x, y))
+                continue;
+
+            float dx =
+                (x - cx) /
+                static_cast<float>(rx);
+
+            float dy =
+                (y - cy) /
+                static_cast<float>(ry);
+
+            float n =
+                noise2D(
+                    x,
+                    y,
+                    0.45f
+                ) * 0.30f;
+
+            if (
+                dx * dx +
+                dy * dy <
+                1.0f + n
+            )
+            {
+                if (y > surface[x] + 7)
+                    at(x, y).type = rock;
+            }
+        }
+    }
+}
+
+void World::addCopperVein(
+    int cx,
+    int cy,
+    int length
+)
+{
+    for (int i = 0; i < length; ++i)
+    {
+        int x =
+            cx +
+            rand() % 7 -
+            3;
+
+        int y =
+            cy +
+            rand() % 5 -
+            2;
+
+        if (!inside(x, y))
+            continue;
+
+        if (solid(x, y))
+        {
+            at(x, y).type =
+                Type::Copper;
+
+            at(x, y).amount =
+                1.0f;
+        }
+
+        if (rand() % 4 == 0)
+        {
+            int bx =
+                x +
+                rand() % 5 -
+                2;
+
+            int by =
+                y +
+                rand() % 5 -
+                2;
+
+            if (
+                inside(bx, by) &&
+                solid(bx, by)
+            )
+            {
+                at(bx, by).type =
+                    Type::Copper;
+
+                at(bx, by).amount =
+                    1.0f;
+            }
+        }
+    }
+}
+
+void World::addOreCluster(
+    Type ore,
+    int cx,
+    int cy,
+    int size
+)
+{
+    for (int i = 0; i < size; ++i)
+    {
+        int x =
+            cx +
+            rand() % 9 -
+            4;
+
+        int y =
+            cy +
+            rand() % 9 -
+            4;
+
+        if (!inside(x, y))
+            continue;
+
+        if (solid(x, y))
+        {
+            at(x, y).type = ore;
+            at(x, y).amount = 1.0f;
+        }
+    }
+}
+
+void World::addCoalSeam(
+    int cx,
+    int cy
+)
+{
+    int length =
+        8 + rand() % 16;
+
+    for (int i = 0; i < length; ++i)
+    {
+        int x = cx + i;
+
+        int y =
+            cy +
+            static_cast<int>(
+                std::sin(i * 0.55f) * 2.0f
+            ) +
+            rand() % 3 -
+            1;
+
+        if (!inside(x, y))
+            continue;
+
+        if (solid(x, y))
+        {
+            at(x, y).type =
+                Type::Coal;
+
+            at(x, y).amount =
+                1.0f;
+        }
+    }
+}
+
+void World::generateCaves()
+{
+    for (
+        int y = 48;
+        y < WORLD_H - 15;
+        ++y
+    )
+    {
+        for (
+            int x = 2;
+            x < WORLD_W - 2;
+            ++x
+        )
+        {
+            if (y <= surface[x] + 9)
+                continue;
+
+            float n =
+                noise2D(
+                    x,
+                    y,
+                    0.85f
+                );
+
+            float n2 =
+                noise2D(
+                    x * 2,
+                    y * 2,
+                    0.45f
+                );
+
+            bool cave =
+                n > 0.67f &&
+                n2 > -0.15f;
+
+            bool tunnel =
+                std::abs(
+                    std::sin(
+                        x * 0.031f +
+                        y * 0.082f
+                    )
+                ) > 0.985f &&
+                n > 0.05f;
+
+            if (
+                (cave || tunnel) &&
+                y < WORLD_H - 8
+            )
+            {
+                at(x, y) = Tile{};
+            }
+        }
+    }
+
+    for (int i = 0; i < 18; ++i)
+    {
+        int cx =
+            15 + rand() % (WORLD_W - 30);
+
+        int cy =
+            surface[cx] +
+            20 +
+            rand() % 45;
+
+        int rx =
+            5 + rand() % 15;
+
+        int ry =
+            3 + rand() % 9;
+
+        for (
+            int y = cy - ry;
+            y <= cy + ry;
+            ++y
+        )
+        {
+            for (
+                int x = cx - rx;
+                x <= cx + rx;
+                ++x
+            )
+            {
+                if (!inside(x, y))
+                    continue;
+
+                if (y <= surface[x] + 10)
+                    continue;
+
+                float dx =
+                    (x - cx) /
+                    static_cast<float>(rx);
+
+                float dy =
+                    (y - cy) /
+                    static_cast<float>(ry);
+
+                float distortion =
+                    noise2D(
+                        x,
+                        y,
+                        0.7f
+                    ) * 0.25f;
+
+                if (
+                    dx * dx +
+                    dy * dy <
+                    1.0f + distortion
+                )
+                {
+                    at(x, y) = Tile{};
+                }
+            }
+        }
+    }
+}
+
+void World::generateMagma()
+{
+    int magmaBase =
+        WORLD_H - 18;
+
+    for (
+        int x = 1;
+        x < WORLD_W - 1;
+        ++x
+    )
+    {
+        float n =
+            noise1D(
+                x * 1.7f,
+                0.7f
+            );
+
+        int top =
+            magmaBase +
+            static_cast<int>(n * 8.0f);
+
+        top =
+            std::clamp(
+                top,
+                WORLD_H - 25,
+                WORLD_H - 7
+            );
+
+        for (
+            int y = top;
+            y < WORLD_H - 1;
+            ++y
+        )
+        {
+            float variation =
+                noise2D(
+                    x,
+                    y,
+                    0.35f
+                );
+
+            if (variation > -0.35f)
+            {
+                at(x, y).type =
+                    Type::Magma;
+
+                at(x, y).amount =
+                    1.0f;
+
+                at(x, y).temperature =
+                    1100.0f;
+            }
+        }
+    }
+
+    for (int i = 0; i < 12; ++i)
+    {
+        int x =
+            10 + rand() % (WORLD_W - 20);
+
+        int width =
+            2 + rand() % 5;
+
+        int height =
+            8 + rand() % 22;
+
+        for (
+            int y = WORLD_H - 18;
+            y > WORLD_H - 18 - height;
+            --y
+        )
+        {
+            for (
+                int dx = -width;
+                dx <= width;
+                ++dx
+            )
+            {
+                int xx = x + dx;
+
+                if (!inside(xx, y))
+                    continue;
+
+                float edge =
+                    std::abs(dx) /
+                    static_cast<float>(width + 1);
+
+                if (
+                    edge <
+                    0.65f +
+                    noise2D(
+                        xx,
+                        y,
+                        0.8f
+                    ) * 0.2f
+                )
+                {
+                    at(xx, y).type =
+                        Type::Magma;
+
+                    at(xx, y).temperature =
+                        1100.0f;
+                }
+            }
+        }
+    }
+}
+
+void World::fillSurfaceOxygen()
+{
+    for (int x = 0; x < WORLD_W; ++x)
+    {
+        int s = surface[x];
+
+        for (int y = 0; y < s; ++y)
+        {
+            if (at(x, y).type == Type::Empty)
+            {
+                at(x, y).type =
+                    Type::Oxygen;
+
+                at(x, y).amount =
+                    1.0f;
+
+                at(x, y).pressure =
+                    1.0f;
+
+                at(x, y).temperature =
+                    20.0f;
+            }
+        }
+    }
+}
+
+
+// ============================================================
+// TREES
+// ============================================================
+
+World::TreeKind World::randomTree()
+{
+    int r = rand() % 100;
+
+    if (r < 28)
+        return TreeKind::Oak;
+
+    if (r < 43)
+        return TreeKind::Pine;
+
+    if (r < 58)
+        return TreeKind::Birch;
+
+    if (r < 66)
+        return TreeKind::Redwood;
+
+    if (r < 80)
+        return TreeKind::Acacia;
+
+    if (r < 91)
+        return TreeKind::Purpleheart;
+
+    return TreeKind::Ebony;
+}
+
+void World::generateTrees()
+{
+    for (
+        int x = 6;
+        x < WORLD_W - 6;
+        ++x
+    )
+    {
+        int s = surface[x];
+
+        if (
+            !inside(x, s) ||
+            at(x, s).type != Type::Grass
+        )
+            continue;
+
+        if (rand() % 100 > 13)
+            continue;
+
+        TreeKind kind =
+            randomTree();
+
+        int height = 0;
+
+        switch (kind)
+        {
+            case TreeKind::Oak:
+                height = 7 + rand() % 7;
+                break;
+
+            case TreeKind::Pine:
+                height = 9 + rand() % 10;
+                break;
+
+            case TreeKind::Birch:
+                height = 8 + rand() % 8;
+                break;
+
+            case TreeKind::Redwood:
+                height = 18 + rand() % 18;
+                break;
+
+            case TreeKind::Acacia:
+                height = 8 + rand() % 8;
+                break;
+
+            case TreeKind::Purpleheart:
+                height = 9 + rand() % 8;
+                break;
+
+            case TreeKind::Ebony:
+                height = 7 + rand() % 9;
+                break;
+        }
+
+        makeTree(
+            x,
+            s - 1,
+            height,
+            kind
+        );
+
+        x +=
+            3 +
+            rand() % 8;
+    }
+}
+
+void World::makeTree(
+    int baseX,
+    int baseY,
+    int height,
+    TreeKind kind
+)
+{
+    int trunkWidth =
+        kind == TreeKind::Redwood
+        ? 3
+        : (
+            kind == TreeKind::Oak
+            ? 2
+            : 1
+        );
+
+    for (int y = 0; y < height; ++y)
+    {
+        int yy =
+            baseY - y;
+
+        if (!inside(baseX, yy))
+            continue;
+
+        int offset = 0;
+
+        if (kind == TreeKind::Acacia)
+        {
+            offset =
+                static_cast<int>(
+                    std::sin(y * 0.45f) * 1.5f
+                );
+        }
+
+        for (
+            int dx = 0;
+            dx < trunkWidth;
+            ++dx
+        )
+        {
+            int xx =
+                baseX +
+                dx -
+                trunkWidth / 2 +
+                offset;
+
+            if (!inside(xx, yy))
+                continue;
+
+            if (
+                at(xx, yy).type == Type::Oxygen ||
+                at(xx, yy).type == Type::Empty
+            )
+            {
+                at(xx, yy).type =
+                    Type::Wood;
+
+                at(xx, yy).temperature =
+                    20.0f +
+                    static_cast<float>(
+                        static_cast<int>(kind)
+                    );
+            }
+        }
+    }
+
+    switch (kind)
+    {
+        case TreeKind::Oak:
+            makeOakCrown(
+                baseX,
+                baseY - height + 2,
+                5
+            );
+            break;
+
+        case TreeKind::Pine:
+            makePineCrown(
+                baseX,
+                baseY - height + 1,
+                height
+            );
+            break;
+
+        case TreeKind::Birch:
+            makeBirchCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Redwood:
+            makeRedwoodCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Acacia:
+            makeAcaciaCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Purpleheart:
+            makePurpleheartCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+
+        case TreeKind::Ebony:
+            makeEbonyCrown(
+                baseX,
+                baseY - height + 2
+            );
+            break;
+    }
+}
+
+void World::leaf(
+    int x,
+    int y,
+    TreeKind kind
+)
+{
+    if (!inside(x, y))
+        return;
+
+    if (
+        at(x, y).type == Type::Oxygen ||
+        at(x, y).type == Type::Empty
+    )
+    {
+        at(x, y).type =
+            Type::Leaves;
+
+        at(x, y).temperature =
+            100.0f +
+            static_cast<float>(
+                static_cast<int>(kind)
+            );
+    }
+}
+
+void World::makeOakCrown(
+    int cx,
+    int cy,
+    int r
+)
+{
+    for (
+        int y = cy - r;
+        y <= cy + r;
+        ++y
+    )
+    {
+        for (
+            int x = cx - r - 2;
+            x <= cx + r + 2;
+            ++x
+        )
+        {
+            float dx =
+                (x - cx) /
+                static_cast<float>(r + 2);
+
+            float dy =
+                (y - cy) /
+                static_cast<float>(r);
+
+            float n =
+                noise2D(
+                    x,
+                    y,
+                    1.5f
+                );
+
+            if (
+                dx * dx +
+                dy * dy <
+                1.0f +
+                n * 0.25f
+            )
+            {
+                leaf(
+                    x,
+                    y,
+                    TreeKind::Oak
+                );
+            }
+        }
+    }
+}
+
+void World::makePineCrown(
+    int cx,
+    int cy,
+    int height
+)
+{
+    for (
+        int y = cy;
+        y < cy + height / 2 + 5;
+        ++y
+    )
+    {
+        int level =
+            y - cy;
+
+        int width =
+            std::min(
+                2 + level / 3,
+                7
+            );
+
+        for (
+            int x = cx - width;
+            x <= cx + width;
+            ++x
+        )
+        {
+            if (
+                (std::abs(x - cx) + level) % 3 != 0 ||
+                std::abs(x - cx) < width - 1
+            )
+            {
+                leaf(
+                    x,
+                    y,
+                    TreeKind::Pine
+                );
+            }
+        }
+    }
+}
+
+void World::makeBirchCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        4,
+        3,
+        TreeKind::Birch
+    );
+
+    makeLeafBlob(
+        cx - 3,
+        cy + 2,
+        3,
+        2,
+        TreeKind::Birch
+    );
+
+    makeLeafBlob(
+        cx + 3,
+        cy + 1,
+        3,
+        2,
+        TreeKind::Birch
+    );
+}
+
+void World::makeRedwoodCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        5,
+        3,
+        TreeKind::Redwood
+    );
+
+    makeLeafBlob(
+        cx - 3,
+        cy + 5,
+        4,
+        2,
+        TreeKind::Redwood
+    );
+
+    makeLeafBlob(
+        cx + 3,
+        cy + 8,
+        4,
+        2,
+        TreeKind::Redwood
+    );
+}
+
+void World::makeAcaciaCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx - 4,
+        cy + 1,
+        5,
+        2,
+        TreeKind::Acacia
+    );
+
+    makeLeafBlob(
+        cx + 4,
+        cy + 1,
+        5,
+        2,
+        TreeKind::Acacia
+    );
+
+    makeLeafBlob(
+        cx,
+        cy - 1,
+        3,
+        2,
+        TreeKind::Acacia
+    );
+}
+
+void World::makePurpleheartCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        4,
+        4,
+        TreeKind::Purpleheart
+    );
+
+    makeLeafBlob(
+        cx - 3,
+        cy + 4,
+        3,
+        2,
+        TreeKind::Purpleheart
+    );
+
+    makeLeafBlob(
+        cx + 3,
+        cy + 5,
+        3,
+        2,
+        TreeKind::Purpleheart
+    );
+}
+
+void World::makeEbonyCrown(
+    int cx,
+    int cy
+)
+{
+    makeLeafBlob(
+        cx,
+        cy,
+        4,
+        4,
+        TreeKind::Ebony
+    );
+
+    makeLeafBlob(
+        cx - 4,
+        cy + 3,
+        3,
+        2,
+        TreeKind::Ebony
+    );
+
+    makeLeafBlob(
+        cx + 4,
+        cy + 4,
+        3,
+        2,
+        TreeKind::Ebony
+    );
+}
+
+void World::makeLeafBlob(
+    int cx,
+    int cy,
+    int rx,
+    int ry,
+    TreeKind kind
+)
+{
+    for (
+        int y = cy - ry;
+        y <= cy + ry;
+        ++y
+    )
+    {
+        for (
+            int x = cx - rx;
+            x <= cx + rx;
+            ++x
+        )
+        {
+            if (!inside(x, y))
+                continue;
+
+            float dx =
+                (x - cx) /
+                static_cast<float>(rx);
+
+            float dy =
+                (y - cy) /
+                static_cast<float>(ry);
+
+            float n =
+                noise2D(
+                    x * 3,
+                    y * 2,
+                    1.5f
+                );
+
+            if (
+                dx * dx +
+                dy * dy <
+                1.0f +
+                n * 0.20f
+            )
+            {
+                leaf(
+                    x,
+                    y,
+                    kind
+                );
+            }
+        }
+    }
+}
+
+
+// ============================================================
+// WATER / GAS
+// ============================================================
+
+void World::makeWater(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    Type type =
+        at(x, y).type;
+
+    if (
+        type == Type::Empty ||
+        type == Type::Oxygen ||
+        type == Type::Water
+    )
+    {
+        at(x, y).type =
+            Type::Water;
+
+        at(x, y).amount =
+            std::min(
+                1.0f,
+                at(x, y).amount + 0.75f
+            );
+
+        at(x, y).temperature =
+            20.0f;
+    }
+}
+
+void World::moveWater(
+    int x1,
+    int y1,
+    int x2,
+    int y2,
+    float rate
+)
+{
+    if (!inside(x2, y2))
+        return;
+
+    Type destination =
+        at(x2, y2).type;
+
+    if (
+        destination != Type::Empty &&
+        destination != Type::Oxygen &&
+        destination != Type::Water
+    )
+        return;
+
+    Tile& a = at(x1, y1);
+    Tile& b = at(x2, y2);
+
+    if (
+        a.type != Type::Water ||
+        a.amount <= 0.001f
+    )
+        return;
+
+    if (
+        b.type == Type::Empty ||
+        b.type == Type::Oxygen
+    )
+    {
+        b.type =
+            Type::Water;
+
+        b.amount =
+            0.0f;
+
+        b.temperature =
+            a.temperature;
+    }
+
+    float capacity =
+        1.0f -
+        b.amount;
+
+    if (capacity <= 0.001f)
+        return;
+
+    float transfer =
+        std::min(
+            a.amount,
+            capacity
+        ) * rate;
+
+    a.amount -= transfer;
+    b.amount += transfer;
+}
+
+void World::stepWater()
+{
+    for (
+        int y = WORLD_H - 2;
+        y >= 0;
+        --y
+    )
+    {
+        for (
+            int x = 1;
+            x < WORLD_W - 1;
+            ++x
+        )
+        {
+            if (at(x, y).type == Type::Water)
+            {
+                moveWater(
+                    x,
+                    y,
+                    x,
+                    y + 1,
+                    0.98f
+                );
+            }
+        }
+    }
+
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        for (
+            int y = WORLD_H - 2;
+            y >= 0;
+            --y
+        )
+        {
+            int start =
+                (pass & 1)
+                ? WORLD_W - 2
+                : 1;
+
+            int end =
+                (pass & 1)
+                ? 0
+                : WORLD_W - 1;
+
+            int direction =
+                (pass & 1)
+                ? -1
+                : 1;
+
+            for (
+                int x = start;
+                x != end;
+                x += direction
+            )
+            {
+                if (at(x, y).type != Type::Water)
+                    continue;
+
+                for (int side = 0; side < 2; ++side)
+                {
+                    int nx =
+                        side == 0
+                        ? x - 1
+                        : x + 1;
+
+                    if (!inside(nx, y))
+                        continue;
+
+                    Type nt =
+                        at(nx, y).type;
+
+                    if (
+                        nt != Type::Empty &&
+                        nt != Type::Oxygen &&
+                        nt != Type::Water
+                    )
+                        continue;
+
+                    float a =
+                        at(x, y).amount;
+
+                    float b =
+                        nt == Type::Water
+                        ? at(nx, y).amount
+                        : 0.0f;
+
+                    if (a <= b + 0.002f)
+                        continue;
+
+                    float transfer =
+                        (a - b) * 0.30f;
+
+                    transfer =
+                        std::min(
+                            transfer,
+                            at(x, y).amount
+                        );
+
+                    if (
+                        nt == Type::Empty ||
+                        nt == Type::Oxygen
+                    )
+                    {
+                        at(nx, y).type =
+                            Type::Water;
+
+                        at(nx, y).amount =
+                            0.0f;
+                    }
+
+                    at(x, y).amount -=
+                        transfer;
+
+                    at(nx, y).amount +=
+                        transfer;
+                }
+            }
+        }
+    }
+
+    cleanFluids();
+}
+
+void World::makeGas(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    if (
+        at(x, y).type == Type::Empty ||
+        at(x, y).type == Type::Oxygen
+    )
+    {
+        at(x, y).type =
+            Type::Gas;
+
+        at(x, y).amount =
+            1.0f;
+
+        at(x, y).pressure =
+            1.0f;
+    }
+}
+
+void World::diffuseGas(
+    int x1,
+    int y1,
+    int x2,
+    int y2
+)
+{
+    if (!inside(x2, y2))
+        return;
+
+    Type destination =
+        at(x2, y2).type;
+
+    if (
+        destination != Type::Empty &&
+        destination != Type::Oxygen &&
+        destination != Type::Gas
+    )
+        return;
+
+    Tile& a = at(x1, y1);
+    Tile& b = at(x2, y2);
+
+    if (
+        b.type == Type::Empty ||
+        b.type == Type::Oxygen
+    )
+    {
+        b.type =
+            Type::Gas;
+
+        b.amount =
+            0.0f;
+    }
+
+    float difference =
+        a.amount -
+        b.amount;
+
+    if (difference <= 0.001f)
+        return;
+
+    float transfer =
+        difference * 0.12f;
+
+    a.amount -= transfer;
+    b.amount += transfer;
+}
+
+void World::stepGas()
+{
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        for (
+            int y = 1;
+            y < WORLD_H - 1;
+            ++y
+        )
+        {
+            for (
+                int x = 1;
+                x < WORLD_W - 1;
+                ++x
+            )
+            {
+                if (at(x, y).type != Type::Gas)
+                    continue;
+
+                diffuseGas(x, y, x + 1, y);
+                diffuseGas(x, y, x - 1, y);
+                diffuseGas(x, y, x, y - 1);
+                diffuseGas(x, y, x, y + 1);
+            }
+        }
+    }
+
+    cleanFluids();
+}
+
+void World::cleanFluids()
+{
+    for (Tile& tile : cells)
+    {
+        if (
+            tile.type == Type::Water &&
+            tile.amount <= 0.001f
+        )
+        {
+            tile = Tile{};
+        }
+
+        if (
+            tile.type == Type::Gas &&
+            tile.amount <= 0.001f
+        )
+        {
+            tile = Tile{};
+        }
+    }
+}
+
+void World::step()
+{
+    stepWater();
+    stepGas();
+}
+
+void World::dig(int x, int y)
+{
+    if (!inside(x, y))
+        return;
+
+    if (
+        x == 0 ||
+        x == WORLD_W - 1 ||
+        y == WORLD_H - 1
+    )
+        return;
+
+    if (!solid(x, y))
+        return;
+
+    at(x, y) = Tile{};
+
+    if (y < surface[x])
+    {
+        at(x, y).type =
+            Type::Oxygen;
+
+        at(x, y).amount =
+            1.0f;
+
+        at(x, y).pressure =
+            1.0f;
+
+        at(x, y).temperature =
+            20.0f;
+    }
+}
+
+float World::totalWater() const
+{
+    float total = 0.0f;
+
+    for (const Tile& tile : cells)
+    {
+        if (tile.type == Type::Water)
+            total += tile.amount;
+    }
+
+    return total;
+}
+
+
+// ============================================================
+// END FILE: core/World.cpp
+// ============================================================
+
+============================================================
+FILE: core/World.h
+============================================================
+// ============================================================
+
+class World
+{
+public:
+
+    std::vector<Tile> cells;
+    std::vector<int> surface;
+
+    World();
+
+    Tile& at(int x, int y);
+    const Tile& at(int x, int y) const;
+
+    bool inside(int x, int y) const;
+
+    bool solidType(Type type) const;
+    bool solid(int x, int y) const;
+    bool open(int x, int y) const;
+
+    void generate();
+
+    void dig(int x, int y);
+    void makeWater(int x, int y);
+    void makeGas(int x, int y);
+
+    void step();
+
+    float totalWater() const;
+
+private:
+
+    float noise1D(float x, float scale) const;
+    float noise2D(int x, int y, float scale) const;
+
+    void addRockMass(
+        int cx,
+        int cy,
+        int rx,
+        int ry,
+        Type rock
+    );
+
+    void addCopperVein(
+        int cx,
+        int cy,
+        int length
+    );
+
+    void addOreCluster(
+        Type ore,
+        int cx,
+        int cy,
+        int size
+    );
+
+    void addCoalSeam(
+        int cx,
+        int cy
+    );
+
+    void generateCaves();
+    void generateMagma();
+    void fillSurfaceOxygen();
+    void generateTrees();
+
+    void moveWater(
+        int x1,
+        int y1,
+        int x2,
+        int y2,
+        float rate
+    );
+
+    void stepWater();
+
+    void diffuseGas(
+        int x1,
+        int y1,
+        int x2,
+        int y2
+    );
+
+    void stepGas();
+
+    void cleanFluids();
+
+    enum class TreeKind
+    {
+        Oak,
+        Pine,
+        Birch,
+        Redwood,
+        Acacia,
+        Purpleheart,
+        Ebony
+    };
+
+    TreeKind randomTree();
+
+    void makeTree(
+        int baseX,
+        int baseY,
+        int height,
+        TreeKind kind
+    );
+
+    void leaf(
+        int x,
+        int y,
+        TreeKind kind
+    );
+
+    void makeOakCrown(
+        int cx,
+        int cy,
+        int r
+    );
+
+    void makePineCrown(
+        int cx,
+        int cy,
+        int height
+    );
+
+    void makeBirchCrown(
+        int cx,
+        int cy
+    );
+
+    void makeRedwoodCrown(
+        int cx,
+        int cy
+    );
+
+    void makeAcaciaCrown(
+        int cx,
+        int cy
+    );
+
+    void makePurpleheartCrown(
+        int cx,
+        int cy
+    );
+
+    void makeEbonyCrown(
+        int cx,
+        int cy
+    );
+
+    void makeLeafBlob(
+        int cx,
+        int cy,
+        int rx,
+        int ry,
+        TreeKind kind
+    );
+};
+
+
+// ============================================================
+// END FILE: core/World.h
+// ============================================================
+
+============================================================
+FILE: main.cpp
+============================================================
+#include "raylib.h"
+
+#include "World.h"
+#include "Camera.h"
+#include "WorldRenderer.h"
+#include "UI.h"
+
+#include <cstdlib>
+#include <ctime>
+#include <vector>
+
+
+int main()
+{
+    srand(
+        static_cast<unsigned>(
+            time(nullptr)
+        )
+    );
+
+    constexpr int SCREEN_W = 1280;
+    constexpr int SCREEN_H = 720;
+
+    InitWindow(
+        SCREEN_W,
+        SCREEN_H,
+        "Tiny ONI"
+    );
+
+    SetTargetFPS(60);
+
+    World world;
+
+    world.generate();
+
+    GameCamera camera;
+
+    camera.initialise(
+        WORLD_W * TILE_SIZE,
+        WORLD_H * TILE_SIZE,
+        SCREEN_W,
+        SCREEN_H
+    );
+
+    WorldRenderer renderer;
+    GameUI ui;
+
+    bool paused = false;
+    bool timePaused = false;
+    bool showUI = true;
+
+    constexpr float DAY_LENGTH =
+        30.0f;
+
+    float timeOfDay =
+        0.25f;
+
+    float accumulator =
+        0.0f;
+
+    float simulationInterval =
+        0.08f;
+
+    std::vector<RainDrop> rain;
+
+    rain.reserve(700);
+
+    // --------------------------------------------------------
+    // Rain spawning
+    // --------------------------------------------------------
+
+    auto spawnRain =
+        [&]()
+    {
+        if (rain.size() >= 700)
+            return;
+
+        for (int i = 0; i < 4; ++i)
+        {
+            RainDrop drop;
+
+            drop.x =
+                static_cast<float>(
+                    rand() % SCREEN_W
+                );
+
+            drop.y =
+                -10.0f -
+                static_cast<float>(
+                    rand() % 100
+                );
+
+            drop.speed =
+                260.0f +
+                static_cast<float>(
+                    rand() % 180
+                );
+
+            rain.push_back(drop);
+        }
+    };
+
+    while (!WindowShouldClose())
+    {
+        float dt =
+            GetFrameTime();
+
+        // ----------------------------------------------------
+        // TIME
+        // ----------------------------------------------------
+
+        if (!timePaused)
+        {
+            timeOfDay +=
+                dt / DAY_LENGTH;
+
+            if (timeOfDay >= 1.0f)
+                timeOfDay -= 1.0f;
+        }
+
+        if (IsKeyPressed(KEY_N))
+        {
+            timeOfDay += 0.05f;
+
+            if (timeOfDay >= 1.0f)
+                timeOfDay -= 1.0f;
+        }
+
+        if (IsKeyPressed(KEY_T))
+            timePaused = !timePaused;
+
+        if (IsKeyPressed(KEY_F1))
+            showUI = !showUI;
+
+        // ----------------------------------------------------
+        // CAMERA
+        // ----------------------------------------------------
+
+        camera.update(
+            dt,
+            SCREEN_W,
+            SCREEN_H
+        );
+
+        // ----------------------------------------------------
+        // SIMULATION CONTROLS
+        // ----------------------------------------------------
+
+        if (IsKeyPressed(KEY_SPACE))
+            paused = !paused;
+
+        if (IsKeyPressed(KEY_R))
+        {
+            world.generate();
+
+            timeOfDay =
+                0.25f;
+
+            rain.clear();
+
+            camera.raylib.target = {
+                WORLD_W * TILE_SIZE / 2.0f,
+                WORLD_H * TILE_SIZE / 2.0f
+            };
+        }
+
+        if (IsKeyPressed(KEY_PERIOD))
+            world.step();
+
+        if (IsKeyPressed(KEY_ONE))
+            simulationInterval = 0.16f;
+
+        if (IsKeyPressed(KEY_TWO))
+            simulationInterval = 0.08f;
+
+        if (IsKeyPressed(KEY_THREE))
+            simulationInterval = 0.04f;
+
+        if (IsKeyPressed(KEY_FOUR))
+            simulationInterval = 0.02f;
+
+        // ----------------------------------------------------
+        // SAVE
+        //
+        // F2 saves immediately to the next numbered slot.
+        // ----------------------------------------------------
+
+        if (IsKeyPressed(KEY_F2))
+        {
+            std::filesystem::create_directories(
+                "saves"
+            );
+
+            int slot = 1;
+
+            while (
+                std::filesystem::exists(
+                    "saves/world_" +
+                    std::to_string(slot) +
+                    ".oni"
+                )
+            )
+            {
+                ++slot;
+            }
+
+            std::string filename =
+                "saves/world_" +
+                std::to_string(slot) +
+                ".oni";
+
+            if (
+                SaveSystem::saveWorld(
+                    world,
+                    filename
+                )
+            )
+            {
+                std::printf(
+                    "Saved world: %s\n",
+                    filename.c_str()
+                );
+            }
+        }
+
+        // ----------------------------------------------------
+        // LOAD
+        //
+        // F3 opens the current simple console selector.
+        // ----------------------------------------------------
+
+        if (IsKeyPressed(KEY_F3))
+        {
+            std::vector<std::string> files =
+                SaveSystem::findWorldFiles();
+
+            if (!files.empty())
+            {
+                std::string filename =
+                    SaveSystem::chooseWorldFile(
+                        files
+                    );
+
+                if (!filename.empty())
+                {
+                    if (
+                        SaveSystem::loadWorld(
+                            world,
+                            filename
+                        )
+                    )
+                    {
+                        rain.clear();
+
+                        std::printf(
+                            "Loaded world: %s\n",
+                            filename.c_str()
+                        );
+                    }
+                    else
+                    {
+                        std::printf(
+                            "Failed to load world.\n"
+                        );
+                    }
+                }
+            }
+            else
+            {
+                std::printf(
+                    "No saved worlds found.\n"
+                );
+            }
+        }
+
+        // ----------------------------------------------------
+        // MOUSE
+        // ----------------------------------------------------
+
+        Vector2 mouseWorld =
+            camera.screenToWorld(
+                GetMousePosition()
+            );
+
+        int tileX =
+            static_cast<int>(
+                std::floor(
+                    mouseWorld.x /
+                    TILE_SIZE
+                )
+            );
+
+        int tileY =
+            static_cast<int>(
+                std::floor(
+                    mouseWorld.y /
+                    TILE_SIZE
+                )
+            );
+
+        if (
+            IsMouseButtonDown(
+                MOUSE_BUTTON_LEFT
+            )
+        )
+        {
+            world.dig(
+                tileX,
+                tileY
+            );
+        }
+
+        if (
+            IsMouseButtonDown(
+                MOUSE_BUTTON_RIGHT
+            )
+        )
+        {
+            world.makeWater(
+                tileX,
+                tileY
+            );
+        }
+
+        if (
+            IsMouseButtonDown(
+                MOUSE_BUTTON_MIDDLE
+            )
+        )
+        {
+            world.makeGas(
+                tileX,
+                tileY
+            );
+        }
+
+        // ----------------------------------------------------
+        // SIMULATION
+        // ----------------------------------------------------
+
+        if (!paused)
+        {
+            accumulator += dt;
+
+            while (
+                accumulator >=
+                simulationInterval
+            )
+            {
+                world.step();
+
+                accumulator -=
+                    simulationInterval;
+            }
+        }
+
+        // ----------------------------------------------------
+        // RAIN
+        // ----------------------------------------------------
+
+        bool daylight =
+            timeOfDay > 0.20f &&
+            timeOfDay < 0.80f;
+
+        bool rainWeather =
+            daylight &&
+            std::sin(
+                timeOfDay *
+                PI *
+                7.0f
+            ) > 0.72f;
+
+        if (rainWeather)
+            spawnRain();
+
+        // ----------------------------------------------------
+        // RAIN MOVEMENT
+        // ----------------------------------------------------
+
+        for (
+            size_t i = 0;
+            i < rain.size();
+        )
+        {
+            RainDrop& drop =
+                rain[i];
+
+            drop.y +=
+                drop.speed *
+                dt;
+
+            bool remove =
+                drop.y >
+                SCREEN_H + 20;
+
+            if (!remove)
+            {
+                Vector2 worldPosition =
+                    camera.screenToWorld(
+                        {
+                            drop.x,
+                            drop.y
+                        }
+                    );
+
+                int gx =
+                    static_cast<int>(
+                        std::floor(
+                            worldPosition.x /
+                            TILE_SIZE
+                        )
+                    );
+
+                int gy =
+                    static_cast<int>(
+                        std::floor(
+                            worldPosition.y /
+                            TILE_SIZE
+                        )
+                    );
+
+                if (
+                    world.inside(gx, gy) &&
+                    world.solid(gx, gy)
+                )
+                {
+                    int waterY =
+                        gy - 1;
+
+                    if (
+                        world.inside(
+                            gx,
+                            waterY
+                        )
+                    )
+                    {
+                        world.makeWater(
+                            gx,
+                            waterY
+                        );
+                    }
+
+                    remove = true;
+                }
+            }
+
+            if (remove)
+            {
+                rain[i] =
+                    rain.back();
+
+                rain.pop_back();
+            }
+            else
+            {
+                ++i;
+            }
+        }
+
+        // ----------------------------------------------------
+        // DRAW
+        // ----------------------------------------------------
+
+        BeginDrawing();
+
+        // Outside the world is deliberately BLACK.
+        ClearBackground(
+            {0, 0, 0, 255}
+        );
+
+        // Sky only exists where the camera is actually
+        // above the generated world.
+        //
+        // The world itself is drawn over the sky.
+        //
+        // We calculate whether the camera view intersects
+        // the atmosphere before drawing it.
+
+        Vector2 cameraTop =
+            camera.screenToWorld(
+                {0, 0}
+            );
+
+        Vector2 cameraBottom =
+            camera.screenToWorld(
+                {
+                    static_cast<float>(SCREEN_W),
+                    static_cast<float>(SCREEN_H)
+                }
+            );
+
+        bool viewHasSky =
+            cameraBottom.y > 0.0f &&
+            cameraTop.y <
+                WORLD_H * TILE_SIZE;
+
+        if (viewHasSky)
+        {
+            drawSky(
+                SCREEN_W,
+                SCREEN_H,
+                timeOfDay
+            );
+        }
+
+        BeginMode2D(
+            camera.raylib
+        );
+
+        renderer.draw(
+            world,
+            camera,
+            SCREEN_W,
+            SCREEN_H,
+            tileX,
+            tileY
+        );
+
+        EndMode2D();
+
+        // ----------------------------------------------------
+        // RAIN
+        // ----------------------------------------------------
+
+        if (daylight)
+        {
+            for (
+                const RainDrop& drop :
+                rain
+            )
+            {
+                DrawLine(
+                    static_cast<int>(drop.x),
+                    static_cast<int>(drop.y),
+                    static_cast<int>(drop.x),
+                    static_cast<int>(drop.y + 5),
+                    {
+                        175,
+                        215,
+                        245,
+                        100
+                    }
+                );
+            }
+        }
+
+        // ----------------------------------------------------
+        // UI
+        // ----------------------------------------------------
+
+        ui.draw(
+            world,
+            SCREEN_W,
+            SCREEN_H,
+            tileX,
+            tileY,
+            paused,
+            timePaused,
+            showUI,
+            timeOfDay,
+            simulationInterval
+        );
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+
+    return 0;
+}
+
+
+// ============================================================
+// END FILE: main.cpp
+
+============================================================
+FILE: persistence/Save.cpp
+============================================================
+// ============================================================
+#include "Save.h"
+
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include "../core/Types.h"
+#include "../core/World.h"
+namespace SaveSystem
+{
+
+static constexpr uint32_t SAVE_MAGIC =
+    0x544F4E49; // "TONI"
+
+static constexpr uint32_t SAVE_VERSION = 1;
+
+struct SaveHeader
+{
+    uint32_t magic;
+    uint32_t version;
+
+    uint32_t width;
+    uint32_t height;
+};
+
+bool saveWorld(
+    const World& world,
+    const std::string& filename
+)
+{
+    std::filesystem::create_directories(
+        "saves"
+    );
+
+    std::ofstream file(
+        filename,
+        std::ios::binary
+    );
+
+    if (!file)
+        return false;
+
+    SaveHeader header{
+        SAVE_MAGIC,
+        SAVE_VERSION,
+        WORLD_W,
+        WORLD_H
+    };
+
+    file.write(
+        reinterpret_cast<const char*>(&header),
+        sizeof(header)
+    );
+
+    file.write(
+        reinterpret_cast<const char*>(
+            world.surface.data()
+        ),
+        sizeof(int) *
+        world.surface.size()
+    );
+
+    file.write(
+        reinterpret_cast<const char*>(
+            world.cells.data()
+        ),
+        sizeof(Tile) *
+        world.cells.size()
+    );
+
+    return file.good();
+}
+
+bool loadWorld(
+    World& world,
+    const std::string& filename
+)
+{
+    std::ifstream file(
+        filename,
+        std::ios::binary
+    );
+
+    if (!file)
+        return false;
+
+    SaveHeader header{};
+
+    file.read(
+        reinterpret_cast<char*>(&header),
+        sizeof(header)
+    );
+
+    if (
+        header.magic != SAVE_MAGIC ||
+        header.version != SAVE_VERSION ||
+        header.width != WORLD_W ||
+        header.height != WORLD_H
+    )
+    {
+        return false;
+    }
+
+    file.read(
+        reinterpret_cast<char*>(
+            world.surface.data()
+        ),
+        sizeof(int) *
+        world.surface.size()
+    );
+
+    file.read(
+        reinterpret_cast<char*>(
+            world.cells.data()
+        ),
+        sizeof(Tile) *
+        world.cells.size()
+    );
+
+    return file.good();
+}
+
+std::vector<std::string> findWorldFiles()
+{
+    std::vector<std::string> files;
+
+    std::filesystem::create_directories(
+        "saves"
+    );
+
+    for (
+        const auto& entry :
+        std::filesystem::directory_iterator(
+            "saves"
+        )
+    )
+    {
+        if (!entry.is_regular_file())
+            continue;
+
+        if (
+            entry.path().extension() ==
+            ".oni"
+        )
+        {
+            files.push_back(
+                entry.path().string()
+            );
+        }
+    }
+
+    std::sort(
+        files.begin(),
+        files.end()
+    );
+
+    return files;
+}
+
+std::string chooseWorldFile(
+    const std::vector<std::string>& files
+)
+{
+    if (files.empty())
+        return {};
+
+    // Simple console selector for now.
+    //
+    // This is intentionally isolated so it can later
+    // become a proper graphical load menu.
+
+    std::printf(
+        "\n==============================\n"
+        " WORLD FILES\n"
+        "==============================\n"
+    );
+
+    for (
+        size_t i = 0;
+        i < files.size();
+        ++i
+    )
+    {
+        std::printf(
+            "%zu: %s\n",
+            i + 1,
+            files[i].c_str()
+        );
+    }
+
+    std::printf(
+        "Choose world number: "
+    );
+
+    int choice = 0;
+
+    if (
+        std::scanf(
+            "%d",
+            &choice
+        ) != 1
+    )
+    {
+        return {};
+    }
+
+    if (
+        choice < 1 ||
+        choice >
+            static_cast<int>(files.size())
+    )
+    {
+        return {};
+    }
+
+    return files[
+        static_cast<size_t>(choice - 1)
+    ];
+}
+
+}
+
+
+// ============================================================
+// END FILE: persistence/Save.cpp
+// ============================================================
+
+============================================================
+FILE: persistence/Save.h
+============================================================
+#pragma once
+
+#include <string>
+#include <vector>
+
+class World;
+
+namespace SaveSystem
+{
+    bool saveWorld(
+        const World& world,
+        const std::string& filename
+    );
+
+    bool loadWorld(
+        World& world,
+        const std::string& filename
+    );
+
+    std::vector<std::string> findWorldFiles();
+
+    std::string chooseWorldFile(
+        const std::vector<std::string>& files
+    );
+}
+============================================================
+FILE: rendering/Sky.cpp
+============================================================
+#include "raylib.h"
+
+#include "Sky.h"
+
+#include <algorithm>
+#include <cmath>
+
+#ifndef PI
+#define PI 3.14159265358979323846
+#endif
+RGB blend(
+    RGB a,
+    RGB b,
+    float t
+)
+{
+    t =
+        std::clamp(
+            t,
+            0.0f,
+            1.0f
+        );
+
+    return {
+        a.r + (b.r - a.r) * t,
+        a.g + (b.g - a.g) * t,
+        a.b + (b.b - a.b) * t
+    };
+}
+
+Color rgbColor(RGB c)
+{
+    return {
+        static_cast<unsigned char>(
+            std::clamp(
+                static_cast<int>(c.r),
+                0,
+                255
+            )
+        ),
+
+        static_cast<unsigned char>(
+            std::clamp(
+                static_cast<int>(c.g),
+                0,
+                255
+            )
+        ),
+
+        static_cast<unsigned char>(
+            std::clamp(
+                static_cast<int>(c.b),
+                0,
+                255
+            )
+        ),
+
+        255
+    };
+}
+
+// Mostly blue / dark blue.
+// Sunrise and sunset are deliberately short.
+
+RGB skyAtTime(float t)
+{
+    t -= std::floor(t);
+
+    const RGB nightBlack =
+        {3, 5, 14};
+
+    const RGB deepBlue =
+        {12, 32, 75};
+
+    const RGB blue =
+        {48, 94, 150};
+
+    const RGB daylight =
+        {105, 165, 205};
+
+    const RGB sunsetBlue =
+        {70, 105, 160};
+
+    const RGB subtlePink =
+        {150, 105, 130};
+
+    const RGB subtleOrange =
+        {185, 115, 75};
+
+    // Night.
+    if (t < 0.16f)
+    {
+        float p =
+            t / 0.16f;
+
+        return blend(
+            nightBlack,
+            deepBlue,
+            p
+        );
+    }
+
+    // Short dawn.
+    if (t < 0.20f)
+    {
+        float p =
+            (t - 0.16f) / 0.04f;
+
+        return blend(
+            deepBlue,
+            subtlePink,
+            p
+        );
+    }
+
+    if (t < 0.23f)
+    {
+        float p =
+            (t - 0.20f) / 0.03f;
+
+        return blend(
+            subtlePink,
+            daylight,
+            p
+        );
+    }
+
+    // Long blue daylight.
+    if (t < 0.57f)
+    {
+        return daylight;
+    }
+
+    // Short sunset.
+    if (t < 0.61f)
+    {
+        float p =
+            (t - 0.57f) / 0.04f;
+
+        return blend(
+            daylight,
+            sunsetBlue,
+            p
+        );
+    }
+
+    if (t < 0.64f)
+    {
+        float p =
+            (t - 0.61f) / 0.03f;
+
+        return blend(
+            sunsetBlue,
+            subtleOrange,
+            p
+        );
+    }
+
+    if (t < 0.68f)
+    {
+        float p =
+            (t - 0.64f) / 0.04f;
+
+        return blend(
+            subtleOrange,
+            deepBlue,
+            p
+        );
+    }
+
+    return blend(
+        deepBlue,
+        nightBlack,
+        (t - 0.68f) / 0.32f
+    );
+}
+
+void drawSky(
+    int screenWidth,
+    int screenHeight,
+    float timeOfDay
+)
+{
+    RGB base =
+        skyAtTime(timeOfDay);
+
+    for (
+        int y = 0;
+        y < screenHeight;
+        ++y
+    )
+    {
+        float vertical =
+            y /
+            static_cast<float>(screenHeight);
+
+        RGB top =
+            blend(
+                base,
+                {2, 3, 10},
+                0.28f *
+                (1.0f - vertical)
+            );
+
+        RGB horizon =
+            blend(
+                top,
+                base,
+                vertical * 0.55f
+            );
+
+        DrawRectangle(
+            0,
+            y,
+            screenWidth,
+            1,
+            rgbColor(horizon)
+        );
+    }
+
+    float night = 0.0f;
+
+    if (timeOfDay < 0.18f)
+    {
+        night =
+            1.0f -
+            timeOfDay / 0.18f;
+    }
+    else if (timeOfDay > 0.66f)
+    {
+        night =
+            (timeOfDay - 0.66f) /
+            0.34f;
+    }
+
+    night =
+        std::clamp(
+            night,
+            0.0f,
+            1.0f
+        );
+
+    if (night > 0.01f)
+    {
+        for (int i = 0; i < 110; ++i)
+        {
+            int x =
+                (i * 7919) %
+                screenWidth;
+
+            int y =
+                15 +
+                (
+                    i * 3571
+                ) %
+                std::max(
+                    1,
+                    screenHeight / 2
+                );
+
+            int size =
+                i % 11 == 0
+                ? 2
+                : 1;
+
+            unsigned char alpha =
+                static_cast<unsigned char>(
+                    night * 230.0f
+                );
+
+            DrawRectangle(
+                x,
+                y,
+                size,
+                size,
+                {
+                    255,
+                    245,
+                    220,
+                    alpha
+                }
+            );
+        }
+    }
+
+    // Sun.
+
+    if (
+        timeOfDay >= 0.20f &&
+        timeOfDay <= 0.80f
+    )
+    {
+        float p =
+            (timeOfDay - 0.20f) /
+            0.60f;
+
+        float angle =
+            p * PI;
+
+        float x =
+            p *
+            (screenWidth + 180.0f) -
+            90.0f;
+
+        float horizon =
+            screenHeight * 0.68f;
+
+        float y =
+            horizon -
+            std::sin(angle) *
+            screenHeight *
+            0.48f;
+
+        DrawCircle(
+            static_cast<int>(x),
+            static_cast<int>(y),
+            35,
+            {
+                255,
+                180,
+                70,
+                28
+            }
+        );
+
+        DrawCircle(
+            static_cast<int>(x),
+            static_cast<int>(y),
+            23,
+            {
+                255,
+                210,
+                75,
+                245
+            }
+        );
+    }
+
+    // Moon.
+
+    float moonP =
+        timeOfDay + 0.5f;
+
+    moonP -=
+        std::floor(moonP);
+
+    if (
+        moonP >= 0.20f &&
+        moonP <= 0.80f
+    )
+    {
+        float p =
+            (moonP - 0.20f) /
+            0.60f;
+
+        float angle =
+            p * PI;
+
+        float x =
+            p *
+            (screenWidth + 180.0f) -
+            90.0f;
+
+        float horizon =
+            screenHeight * 0.68f;
+
+        float y =
+            horizon -
+            std::sin(angle) *
+            screenHeight *
+            0.48f;
+
+        DrawCircle(
+            static_cast<int>(x),
+            static_cast<int>(y),
+            18,
+            {
+                225,
+                230,
+                210,
+                255
+            }
+        );
+
+        DrawCircle(
+            static_cast<int>(x + 7),
+            static_cast<int>(y - 4),
+            15,
+            rgbColor(base)
+        );
+    }
+}
+
+
+// ============================================================
+// END FILE: rendering/Sky.cpp
+// ============================================================
+
+============================================================
+FILE: rendering/Sky.h
+============================================================
+// ============================================================
+
+struct RGB
+{
+    float r;
+    float g;
+    float b;
+};
+
+RGB blend(RGB a, RGB b, float t);
+
+Color rgbColor(RGB c);
+
+RGB skyAtTime(float timeOfDay);
+
+void drawSky(
+    int screenWidth,
+    int screenHeight,
+    float timeOfDay
+);
+
+
+// ============================================================
+// END FILE: rendering/Sky.h
+// ============================================================
+
+============================================================
+FILE: rendering/WorldRenderer.cpp
+============================================================
+// ============================================================
+#include "WorldRenderer.h"
+
+#include <algorithm>
+#include <cmath>
+
+#include "raylib.h"
+
+#include "../core/Types.h"
+#include "../core/Materials.h"
+#include "../core/World.h"
+#include "../camera/Camera.h"
+
+WorldRenderer::WorldRenderer()
+{
+}
+
+Color WorldRenderer::leafColor(
+    int kind
+) const
+{
+    switch (kind)
+    {
+        case 0:
+            // Oak
+            return {65, 125, 48, 255};
+
+        case 1:
+            // Pine
+            return {28, 91, 58, 255};
+
+        case 2:
+            // Birch - deliberately pale.
+            return {175, 190, 145, 255};
+
+        case 3:
+            // Redwood
+            return {48, 118, 66, 255};
+
+        case 4:
+            // Acacia
+            return {105, 155, 55, 255};
+
+        case 5:
+            // Purpleheart
+            return {63, 116, 82, 255};
+
+        case 6:
+            // Ebony - very dark.
+            return {25, 55, 30, 255};
+
+        default:
+            return {55, 125, 55, 255};
+    }
+}
+
+void WorldRenderer::drawTile(
+    const World& world,
+    int x,
+    int y
+) const
+{
+    const Tile& tile =
+        world.at(x, y);
+
+    if (
+        tile.type == Type::Empty ||
+        tile.type == Type::Oxygen
+    )
+    {
+        return;
+    }
+
+    int px =
+        x * TILE_SIZE;
+
+    int py =
+        y * TILE_SIZE;
+
+    if (tile.type == Type::Water)
+    {
+        Color water =
+            materialColor(
+                Type::Water
+            );
+
+        int height =
+            std::max(
+                1,
+                static_cast<int>(
+                    TILE_SIZE *
+                    tile.amount
+                )
+            );
+
+        DrawRectangle(
+            px,
+            py + TILE_SIZE - height,
+            TILE_SIZE,
+            height,
+            water
+        );
+
+        if (tile.amount > 0.15f)
+        {
+            DrawRectangle(
+                px + 1,
+                py + TILE_SIZE - height,
+                TILE_SIZE - 2,
+                1,
+                {
+                    150,
+                    215,
+                    255,
+                    130
+                }
+            );
+        }
+
+        return;
+    }
+
+    if (tile.type == Type::Gas)
+    {
+        unsigned char alpha =
+            static_cast<unsigned char>(
+                std::clamp(
+                    static_cast<int>(
+                        35.0f +
+                        tile.amount * 35.0f
+                    ),
+                    15,
+                    70
+                )
+            );
+
+        DrawCircle(
+            px + TILE_SIZE / 2,
+            py + TILE_SIZE / 2,
+            1.5f,
+            {
+                135,
+                205,
+                235,
+                alpha
+            }
+        );
+
+        return;
+    }
+
+    if (tile.type == Type::Magma)
+    {
+        DrawRectangle(
+            px,
+            py,
+            TILE_SIZE,
+            TILE_SIZE,
+            materialColor(
+                Type::Magma
+            )
+        );
+
+        if ((x + y) % 5 == 0)
+        {
+            DrawRectangle(
+                px + 2,
+                py + 2,
+                3,
+                3,
+                {
+                    255,
+                    180,
+                    45,
+                    255
+                }
+            );
+        }
+
+        return;
+    }
+
+    if (tile.type == Type::Leaves)
+    {
+        int kind =
+            std::clamp(
+                static_cast<int>(
+                    std::round(
+                        tile.temperature -
+                        100.0f
+                    )
+                ),
+                0,
+                6
+            );
+
+        Color leaf =
+            leafColor(kind);
+
+        DrawRectangle(
+            px,
+            py,
+            TILE_SIZE,
+            TILE_SIZE,
+            leaf
+        );
+
+        if ((x + y) % 4 == 0)
+        {
+            DrawRectangle(
+                px + 2,
+                py + 2,
+                3,
+                3,
+                {
+                    static_cast<unsigned char>(
+                        std::min(
+                            255,
+                            leaf.r + 18
+                        )
+                    ),
+
+                    static_cast<unsigned char>(
+                        std::min(
+                            255,
+                            leaf.g + 18
+                        )
+                    ),
+
+                    static_cast<unsigned char>(
+                        std::min(
+                            255,
+                            leaf.b + 12
+                        )
+                    ),
+
+                    255
+                }
+            );
+        }
+
+        return;
+    }
+
+    Color base =
+        materialColor(
+            tile.type
+        );
+
+    DrawRectangle(
+        px,
+        py,
+        TILE_SIZE,
+        TILE_SIZE,
+        base
+    );
+
+    int n =
+        (
+            x * 17 +
+            y * 31
+        ) % 9;
+
+    if (n == 0 || n == 1)
+    {
+        Color variation =
+            base;
+
+        variation.r =
+            static_cast<unsigned char>(
+                std::min(
+                    255,
+                    variation.r + 10
+                )
+            );
+
+        variation.g =
+            static_cast<unsigned char>(
+                std::min(
+                    255,
+                    variation.g + 8
+                )
+            );
+
+        variation.b =
+            static_cast<unsigned char>(
+                std::min(
+                    255,
+                    variation.b + 8
+                )
+            );
+
+        DrawRectangle(
+            px + 2,
+            py + 2,
+            3,
+            3,
+            variation
+        );
+    }
+
+    if (tile.type == Type::Copper)
+    {
+        DrawRectangle(
+            px + 2,
+            py + 2,
+            3,
+            3,
+            {
+                55,
+                180,
+                145,
+                255
+            }
+        );
+    }
+
+    if (
+        tile.type == Type::Iron &&
+        (x + y) % 3 == 0
+    )
+    {
+        DrawRectangle(
+            px + 3,
+            py + 4,
+            3,
+            2,
+            {
+                185,
+                100,
+                75,
+                255
+            }
+        );
+    }
+
+    if (tile.type == Type::Coal)
+    {
+        DrawRectangle(
+            px + 2,
+            py + 2,
+            4,
+            4,
+            {
+                20,
+                20,
+                22,
+                255
+            }
+        );
+    }
+
+    if (tile.type == Type::Wood)
+    {
+        DrawRectangle(
+            px + 3,
+            py,
+            2,
+            TILE_SIZE,
+            {
+                70,
+                42,
+                27,
+                180
+            }
+        );
+    }
+
+    DrawRectangleLines(
+        px,
+        py,
+        TILE_SIZE,
+        TILE_SIZE,
+        {
+            35,
+            35,
+            40,
+            255
+        }
+    );
+}
+
+void WorldRenderer::draw(
+    const World& world,
+    const GameCamera& camera,
+    int screenWidth,
+    int screenHeight,
+    int cursorX,
+    int cursorY
+)
+{
+    Vector2 topLeft =
+        GetScreenToWorld2D(
+            {0, 0},
+            camera.raylib
+        );
+
+    Vector2 bottomRight =
+        GetScreenToWorld2D(
+            {
+                static_cast<float>(screenWidth),
+                static_cast<float>(screenHeight)
+            },
+            camera.raylib
+        );
+
+    int minX =
+        static_cast<int>(
+            std::floor(
+                topLeft.x /
+                TILE_SIZE
+            )
+        ) - 2;
+
+    int maxX =
+        static_cast<int>(
+            std::floor(
+                bottomRight.x /
+                TILE_SIZE
+            )
+        ) + 2;
+
+    int minY =
+        static_cast<int>(
+            std::floor(
+                topLeft.y /
+                TILE_SIZE
+            )
+        ) - 2;
+
+    int maxY =
+        static_cast<int>(
+            std::floor(
+                bottomRight.y /
+                TILE_SIZE
+            )
+        ) + 2;
+
+    // Large buffer around the world.
+    //
+    // Anything outside the generated world stays black.
+    // The camera is therefore free to travel everywhere.
+
+    for (int y = minY; y <= maxY; ++y)
+    {
+        for (int x = minX; x <= maxX; ++x)
+        {
+            if (!world.inside(x, y))
+                continue;
+
+            drawTile(
+                world,
+                x,
+                y
+            );
+        }
+    }
+
+    if (world.inside(cursorX, cursorY))
+    {
+        DrawRectangleLines(
+            cursorX * TILE_SIZE,
+            cursorY * TILE_SIZE,
+            TILE_SIZE,
+            TILE_SIZE,
+            YELLOW
+        );
+    }
+}
+
+// ============================================================
+// END FILE: rendering/WorldRenderer.cpp
+// ============================================================
+============================================================
+FILE: rendering/WorldRenderer.h
+============================================================
+#pragma once
+
+#include "raylib.h"
+
+class World;
+class GameCamera;
+
+class WorldRenderer
+{
+public:
+
+    WorldRenderer();
+
+    void draw(
+        const World& world,
+        const GameCamera& camera,
+        int screenWidth,
+        int screenHeight,
+        int cursorX,
+        int cursorY
+    );
+
+private:
+
+    Color leafColor(
+        int kind
+    ) const;
+
+    void drawTile(
+        const World& world,
+        int x,
+        int y
+    ) const;
+};
+============================================================
+FILE: ui/UI.cpp
+============================================================
+// ============================================================
+#include "UI.h"
+
+#include <cstdio>
+
+#include "raylib.h"
+
+#include "../core/Types.h"
+#include "../core/Materials.h"
+#include "../core/World.h"
+void GameUI::draw(
+    const World& world,
+    int screenWidth,
+    int screenHeight,
+    int cursorX,
+    int cursorY,
+    bool paused,
+    bool timePaused,
+    bool showUI,
+    float timeOfDay,
+    float interval
+)
+{
+    if (!showUI)
+        return;
+
+    DrawRectangle(
+        8,
+        8,
+        650,
+        155,
+        {
+            0,
+            0,
+            0,
+            185
+        }
+    );
+
+    DrawText(
+        "LMB dig   RMB water   MMB gas",
+        16,
+        16,
+        16,
+        RAYWHITE
+    );
+
+    DrawText(
+        "WASD/arrows pan   wheel zoom   SPACE pause",
+        16,
+        37,
+        14,
+        RAYWHITE
+    );
+
+    DrawText(
+        ". step   R regenerate   1/2/3/4 speed",
+        16,
+        57,
+        14,
+        RAYWHITE
+    );
+
+    DrawText(
+        "T pause time   N advance time   F1 hide UI",
+        16,
+        77,
+        14,
+        RAYWHITE
+    );
+
+    DrawText(
+        paused
+            ? "SIMULATION PAUSED"
+            : "SIMULATION RUNNING",
+        16,
+        101,
+        14,
+        paused
+            ? YELLOW
+            : GREEN
+    );
+
+    DrawText(
+        timePaused
+            ? "TIME PAUSED"
+            : "TIME RUNNING",
+        220,
+        101,
+        14,
+        timePaused
+            ? ORANGE
+            : SKYBLUE
+    );
+
+    int totalMinutes =
+        static_cast<int>(
+            timeOfDay *
+            24.0f *
+            60.0f
+        );
+
+    int hours =
+        totalMinutes / 60;
+
+    int minutes =
+        totalMinutes % 60;
+
+    char clockText[32];
+
+    std::snprintf(
+        clockText,
+        sizeof(clockText),
+        "%02d:%02d",
+        hours,
+        minutes
+    );
+
+    DrawText(
+        clockText,
+        16,
+        124,
+        22,
+        RAYWHITE
+    );
+
+    DrawText(
+        "30 second day",
+        90,
+        128,
+        13,
+        LIGHTGRAY
+    );
+
+    DrawText(
+        "Atmosphere: OXYGEN",
+        210,
+        128,
+        13,
+        {
+            120,
+            210,
+            240,
+            255
+        }
+    );
+
+    char waterText[64];
+
+    std::snprintf(
+        waterText,
+        sizeof(waterText),
+        "Water: %.2f",
+        world.totalWater()
+    );
+
+    DrawText(
+        waterText,
+        405,
+        128,
+        13,
+        SKYBLUE
+    );
+
+    if (
+        world.inside(
+            cursorX,
+            cursorY
+        )
+    )
+    {
+        const Tile& tile =
+            world.at(
+                cursorX,
+                cursorY
+            );
+
+        DrawRectangle(
+            screenWidth - 230,
+            8,
+            222,
+            105,
+            {
+                0,
+                0,
+                0,
+                190
+            }
+        );
+
+        DrawText(
+            materialName(tile.type),
+            screenWidth - 215,
+            16,
+            18,
+            RAYWHITE
+        );
+
+        char buffer[128];
+
+        std::snprintf(
+            buffer,
+            sizeof(buffer),
+            "x %d  y %d",
+            cursorX,
+            cursorY
+        );
+
+        DrawText(
+            buffer,
+            screenWidth - 215,
+            39,
+            14,
+            RAYWHITE
+        );
+
+        std::snprintf(
+            buffer,
+            sizeof(buffer),
+            "amount %.3f",
+            tile.amount
+        );
+
+        DrawText(
+            buffer,
+            screenWidth - 215,
+            59,
+            14,
+            RAYWHITE
+        );
+
+        std::snprintf(
+            buffer,
+            sizeof(buffer),
+            "temp %.1f",
+            tile.temperature
+        );
+
+        DrawText(
+            buffer,
+            screenWidth - 215,
+            79,
+            14,
+            RAYWHITE
+        );
+    }
+}
+
+
+// ============================================================
+// END FILE: ui/UI.cpp
+// ============================================================
+
+============================================================
+FILE: ui/UI.h
+============================================================
+#pragma once
+
+class World;
+
+class GameUI
+{
+public:
+
+    void draw(
+        const World& world,
+        int screenWidth,
+        int screenHeight,
+        int cursorX,
+        int cursorY,
+        bool paused,
+        bool timePaused,
+        bool showUI,
+        float timeOfDay,
+        float simulationInterval
+    );
+};

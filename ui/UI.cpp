@@ -8,8 +8,10 @@
 #include "../core/Types.h"
 #include "../core/Materials.h"
 #include "../core/World.h"
+#include "../camera/Camera.h"
 void GameUI::draw(
     const World& world,
+    const GameCamera& camera,
     int screenWidth,
     int screenHeight,
     int cursorX,
@@ -23,12 +25,35 @@ void GameUI::draw(
 {
     if (!showUI)
         return;
+	
+	DrawText(
+    TextFormat(
+        "Camera: %.1f, %.1f",
+        camera.raylib.target.x,
+        camera.raylib.target.y
+    ),
+    16,
+    150,
+    14,
+    RAYWHITE
+);
+
+DrawText(
+    TextFormat(
+        "Zoom: %.2f",
+        camera.raylib.zoom
+    ),
+    220,
+    150,
+    14,
+    RAYWHITE
+);
 
     DrawRectangle(
         8,
         8,
         650,
-        155,
+        180,
         {
             0,
             0,
@@ -245,8 +270,3 @@ void GameUI::draw(
         );
     }
 }
-
-
-// ============================================================
-// END FILE: ui/UI.cpp
-// ============================================================

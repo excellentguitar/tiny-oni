@@ -1,5 +1,9 @@
-// ============================================================
+#pragma once
 
+#include <vector>
+
+#include "Types.h"
+#include "Materials.h"
 class World
 {
 public:
@@ -16,6 +20,7 @@ public:
 
     bool solidType(Type type) const;
     bool solid(int x, int y) const;
+	bool characterSolid(int x, int y) const;
     bool open(int x, int y) const;
 
     void generate();

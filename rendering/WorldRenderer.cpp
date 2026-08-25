@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 #include "raylib.h"
 
@@ -63,13 +64,24 @@ void WorldRenderer::drawTile(
     const Tile& tile =
         world.at(x, y);
 
-    if (
-        tile.type == Type::Empty ||
-        tile.type == Type::Oxygen
-    )
+if (
+    tile.type == Type::Empty ||
+    tile.type == Type::Oxygen
+)
+{
+    if (y > world.surface[x])
     {
-        return;
+        DrawRectangle(
+            x * TILE_SIZE,
+            y * TILE_SIZE,
+            TILE_SIZE,
+            TILE_SIZE,
+            BLACK
+        );
     }
+
+    return;
+}
 
     int px =
         x * TILE_SIZE;
@@ -404,42 +416,50 @@ void WorldRenderer::draw(
             camera.raylib
         );
 
-    int minX =
-        static_cast<int>(
-            std::floor(
-                topLeft.x /
-                TILE_SIZE
-            )
-        ) - 2;
+ int minX = static_cast<int>(
+    std::floor(
+        std::min(topLeft.x, bottomRight.x) / TILE_SIZE
+    )
+) - 2;
 
-    int maxX =
-        static_cast<int>(
-            std::floor(
-                bottomRight.x /
-                TILE_SIZE
-            )
-        ) + 2;
+int maxX = static_cast<int>(
+    std::floor(
+        std::max(topLeft.x, bottomRight.x) / TILE_SIZE
+    )
+) + 2;
 
-    int minY =
-        static_cast<int>(
-            std::floor(
-                topLeft.y /
-                TILE_SIZE
-            )
-        ) - 2;
+int minY = static_cast<int>(
+    std::floor(
+        std::min(topLeft.y, bottomRight.y) / TILE_SIZE
+    )
+) - 2;
 
-    int maxY =
-        static_cast<int>(
-            std::floor(
-                bottomRight.y /
-                TILE_SIZE
-            )
-        ) + 2;
+int maxY = static_cast<int>(
+    std::floor(
+        std::max(topLeft.y, bottomRight.y) / TILE_SIZE
+    )
+) + 2;
+
+std::printf(
+    "[RENDER] tiles X=%d..%d Y=%d..%d\n",
+    minX,
+    maxX,
+    minY,
+    maxY
+);
 
     // Large buffer around the world.
     //
     // Anything outside the generated world stays black.
     // The camera is therefore free to travel everywhere.
+
+std::printf(
+    "[RENDER] camera world TL=(%.1f, %.1f) BR=(%.1f, %.1f)\n",
+    topLeft.x,
+    topLeft.y,
+    bottomRight.x,
+    bottomRight.y
+);
 
     for (int y = minY; y <= maxY; ++y)
     {
